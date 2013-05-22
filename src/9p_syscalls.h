@@ -1,0 +1,3 @@
+
+create:
+An attempt to create a file in a directory where the given name already exists will be rejected; in this case, the create system call (see open(2)) uses open with truncation. The algorithm used by the create system call is: first walk to the directory to contain the file. If that fails, return an error. Next walk to the specified file. If the walk succeeds, send a request to open and truncate the file and return the result, successful or not. If the walk fails, send a create message. If that fails, it may be because the file was created by another process after the previous walk failed, so (once) try the walk and open again. 

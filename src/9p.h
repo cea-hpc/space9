@@ -1,0 +1,170 @@
+#ifndef P9
+#define P9
+
+#include <dirent.h>     // MAXNAMLEN
+#include <sys/param.h>  // MAXPATHLEN
+#include <strings.h>    // ffsll
+
+#include "bitmap.h"
+
+/* 9p-specific types */
+
+/**
+ * @brief Length prefixed string type
+ *
+ * The protocol uses length prefixed strings for all
+ * string data, so we replicate that for our internal
+ * string members.
+ */
+
+struct p9_str {
+	uint16_t  len; /*< Length of the string */
+	char *str; /*< The string */
+};
+
+
+/**
+ * enum p9_qid - QID types
+ * @P9_QTDIR: directory
+ * @P9_QTAPPEND: append-only
+ * @P9_QTEXCL: excluse use (only one open handle allowed)
+ * @P9_QTMOUNT: mount points
+ * @P9_QTAUTH: authentication file
+ * @P9_QTTMP: non-backed-up files
+ * @P9_QTSYMLINK: symbolic links (9P2000.u)
+ * @P9_QTLINK: hard-link (9P2000.u)
+ * @P9_QTFILE: normal files
+ *
+ * QID types are a subset of permissions - they are primarily
+ * used to differentiate semantics for a file system entity via
+ * a jump-table.  Their value is also the most signifigant 16 bits
+ * of the permission_
+ *
+ * See Also: http://plan9.bell-labs.com/magic/man2html/2/sta
+ */
+enum {
+	P9_QTDIR = 0x80,
+	P9_QTAPPEND = 0x40,
+	P9_QTEXCL = 0x20,
+	P9_QTMOUNT = 0x10,
+	P9_QTAUTH = 0x08,
+	P9_QTTMP = 0x04,
+	P9_QTSYMLINK = 0x02,
+	P9_QTLINK = 0x01,
+	P9_QTFILE = 0x00,
+};
+
+/**
+ * @brief file system entity information
+ *
+ * qids are /identifiers used by 9P servers to track file system
+ * entities.  The type is used to differentiate semantics for operations
+ * on the entity (ie. read means something different on a directory than
+ * on a file).  The path provides a server unique index for an entity
+ * (roughly analogous to an inode number), while the version is updated
+ * every time a file is modified and can be used to maintain cache
+ * coherency between clients and serves.
+ * Servers will often differentiate purely synthetic entities by setting
+ * their version to 0, signaling that they should never be cached and
+ * should be accessed synchronously.
+ *
+ * See Also://plan9.bell-labs.com/magic/man2html/2/sta
+ */
+
+typedef struct p9_qid {
+	uint8_t type; /*< Type */
+	uint32_t version; /*< Monotonically incrementing version number */
+	uint64_t path; /*< Per-server-unique ID for a file system element */
+} p9_qid_t;
+
+
+/* library types */
+
+struct fid {
+	char path[MAXPATHLEN];
+	int open;
+	struct p9_qid qid;
+};
+
+struct p9_handle {
+	msk_trans_t *trans;
+	struct ibv_mr *mr;
+	uint8_t *rdmabuf;
+	msk_data_t *rdata;
+	msk_data_t *wdata;
+	pthread_mutex_t ctx_lock;
+	pthread_cond_t ctx_cond;
+	pthread_mutex_t tag_lock;
+	pthread_cond_t tag_cond;
+	pthread_mutex_t fid_lock;
+	pthread_cond_t fid_cond;
+	bitmap_t *wdata_b;
+	uint16_t max_tag;
+	bitmap_t *tags;
+	uint32_t max_fid;
+	bitmap_t *fids;
+//	rxt_node *fids_tree;
+	char aname[MAXPATHLEN];
+	uint32_t uid;
+	int recv_num;
+	uint32_t msize;
+};
+
+struct fs_stats {
+	uint32_t type;
+	uint32_t bsize;
+	uint64_t blocks;
+	uint64_t bfree;
+	uint64_t bavail;
+	uint64_t filse;
+	uint64_t ffree;
+	uint64_t fsid;
+	uint32_t namelen;
+};
+
+/* 9P Magic Numbers */
+#define P9_NOTAG	(uint16_t)(~0)
+#define P9_NOFID	(uint32_t)(~0)
+#define P9_NONUNAME	(uint32_t)(~0)
+#define P9_MAXWELEM	16
+
+
+/**
+ * @brief Get a buffer to fill that will be ok to send directly
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [OUT]   pdata:	filled with appropriate buffer
+ * @param [OUT]   tag:		available tag to use in the reply. If set to P9_NOTAG, this is taken instead.
+ * @return 0 on success, errno value on error
+ */
+int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag);
+
+/**
+ * @brief Send a buffer obtained through getbuffer
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    data:		buffer to send
+ * @return 0 on success, errno value on error
+ */
+int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data);
+
+/**
+ * @brief Waits for a reply with a given tag to arrive
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [OUT]   pdata:	filled with appropriate buffer
+ * @param [IN]    tag:		tag to wait for
+ * @return 0 on success, errno value on error
+ */
+int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag);
+
+/**
+ * @brief Signal we're done with the buffer and it can be used again
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    data:		buffer to reuse
+ * @return 0 on success, errno value on error
+ */
+int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
+
+#endif
