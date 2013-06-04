@@ -40,12 +40,11 @@ int p9_version(struct p9_handle *p9_handle);
  * size[4] Rattach tag[2] qid[13]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    fid:		initial fid to populate
  * @param [IN]    uid:		uid to use
- * @param [OUT]   qid:		qid to populate if non-NULL
+ * @param [OUT]   fid:		initial fid to populate
  * @return 0 on success, errno value on error.
  */
-int p9_attach(struct p9_handle *p9_handle, uint32_t fid, uint32_t uid, struct p9_qid *qid);
+int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid);
 
 
 /**

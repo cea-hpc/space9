@@ -32,12 +32,12 @@ int p9_version(struct p9_handle *p9_handle) {
 	if (rc != 0 || data == NULL)
 		return rc;
 
-	p9_initcursor(cursor, data->data, P9_TVERSION, tag);
+	p9_initcursor(cursor, data->data, P9_TVERSION, P9_NOTAG);
 	p9_setvalue(cursor, p9_handle->msize, uint32_t);
 	p9_setstr(cursor, 8 /*strlen("9P2000.L")*/, "9P2000.L");
 	p9_setmsglen(cursor, data->data);
 
-	rc = p9c_sendrequest(p9_handle, data);
+	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
 		return rc;
 
@@ -46,6 +46,7 @@ int p9_version(struct p9_handle *p9_handle) {
 		return rc;
 
 	cursor = data->data;
+	p9_skipheader(cursor);
 	p9_getvalue(cursor, p9_handle->msize, uint32_t);
 	p9_getstr(cursor, len, version);
 	if (strncmp(version, "9P2000.L", len)) {
@@ -68,13 +69,52 @@ int p9_version(struct p9_handle *p9_handle) {
  * size[4] Rattach tag[2] qid[13]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    fid:		initial fid to populate
  * @param [IN]    uid:		uid to use
- * @param [OUT]   qid:		qid to populate if non-NULL
+ * @param [OUT]   fid:		initial fid to populate
  * @return 0 on success, errno value on error.
  */
-int p9_attach(struct p9_handle *p9_handle, uint32_t fid, uint32_t uid, struct p9_qid *qid) {
-	return 0;
+int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t *cursor;
+	struct p9_fid *fid;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	rc = p9c_getfid(p9_handle, &fid);
+	// FIXME: free buffer
+	if (rc)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TATTACH, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, P9_NOFID, uint32_t);
+	p9_setstr(cursor, 0, "");
+	p9_setstr(cursor, strlen(p9_handle->aname), p9_handle->aname);
+	p9_setvalue(cursor, uid, uint32_t);
+	p9_setmsglen(cursor, data->data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_skipheader(cursor);
+	p9_getqid(cursor, fid->qid);
+	strncpy(fid->path, "/", 2);
+
+	p9c_putreply(p9_handle, data);
+
+
+	return rc;
 }
 
 

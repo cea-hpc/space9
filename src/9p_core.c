@@ -21,20 +21,32 @@
  */
 int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag) {
 	msk_data_t *data;
-	uint16_t tag;
-//	int rc;
+	uint32_t wdata_i, tag;
 
-	data = NULL;
+	pthread_mutex_lock(&p9_handle->wdata_lock);
+	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num)
+		pthread_cond_wait(&p9_handle->wdata_cond, &p9_handle->wdata_lock);
+	pthread_mutex_unlock(&p9_handle->wdata_lock);
+
+	data = &p9_handle->wdata[wdata_i];
 	*pdata = data;
 
-	/* Do we need to find a tag */
-	if (*ptag != P9_NOTAG) {
-		pthread_mutex_lock(&p9_handle->tag_lock);
-		while ((tag = get_and_set_first_bit(p9_handle->tags, p9_handle->max_tag)) == UINT32_MAX)
+	pthread_mutex_lock(&p9_handle->tag_lock);
+	/* kludge on P9_NOTAG to have a smaller array */
+	if (*ptag == P9_NOTAG) {
+		while(get_bit(p9_handle->tags_bitmap, 0))
 			pthread_cond_wait(&p9_handle->tag_cond, &p9_handle->tag_lock);
-		pthread_mutex_unlock(&p9_handle->tag_lock);
-		*ptag = tag;
+		set_bit(p9_handle->tags_bitmap, 0);
+		tag = 0;
+	} else {
+		while ((tag = get_and_set_first_bit(p9_handle->tags_bitmap, p9_handle->max_tag)) == p9_handle->max_tag)
+			pthread_cond_wait(&p9_handle->tag_cond, &p9_handle->tag_lock);
 	}
+	pthread_mutex_unlock(&p9_handle->tag_lock);
+
+	p9_handle->tags[tag].rdata = NULL;
+
+	*ptag = (uint16_t)tag;
 	return 0;
 }
 
@@ -45,8 +57,14 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
  * @param [IN]    data:		buffer to send
  * @return 0 on success, errno value on error
  */
-int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data) {
+int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
 	// We need more recv buffers ready than requests pending
+
+	/* 9p protocol: first uint32 is always the size of the message to send */
+	data->size = *(uint32_t*)data->data;
+
+	msk_post_send(p9_handle->trans, data, p9_handle->mr, NULL, p9_send_err_cb, (void*)(uint64_t)tag);
+
 	return 0;
 }
 
@@ -60,8 +78,16 @@ int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data) {
  */
 int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) {
 
+	pthread_mutex_lock(&p9_handle->recv_lock);
+	while (p9_handle->tags[tag].rdata == NULL) {
+		pthread_cond_wait(&p9_handle->recv_cond, &p9_handle->recv_lock);
+	}
+	pthread_mutex_unlock(&p9_handle->recv_lock);
+
+	*pdata = p9_handle->tags[tag].rdata;
 	if (tag != P9_NOTAG)
-		clear_bit(p9_handle->tags, tag);
+		clear_bit(p9_handle->tags_bitmap, tag);
+
 	return 0;
 }
 
@@ -73,5 +99,45 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
  * @return 0 on success, errno value on error
  */
 int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data) {
+	int rc;
+
+	rc = msk_post_recv(p9_handle->trans, data, p9_handle->mr, p9_recv_cb, p9_recv_err_cb, NULL);
+	if (rc) {
+		ERROR_LOG("Could not post recv buffer %p: %s (%d)", data, strerror(rc), rc);
+		rc = EIO;
+	}
+
+	return rc;
+}
+
+/**
+ * @brief Get a fid structure ready to be used
+ *
+ * @param [IN]    p9_handle:    connection handle
+ * @param [OUT]   pfid:         fid to be filled
+ * @return 0 on success, errno value on error
+ */
+int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
+	struct p9_fid *fid;
+	uint32_t fid_i;
+
+	pthread_mutex_lock(&p9_handle->fid_lock);
+	while ((fid_i = get_and_set_first_bit(p9_handle->fids_bitmap, p9_handle->recv_num)) == p9_handle->recv_num)
+		pthread_cond_wait(&p9_handle->fid_cond, &p9_handle->fid_lock);
+	pthread_mutex_unlock(&p9_handle->fid_lock);
+
+
+	fid = bucket_get(p9_handle->fids_bucket);
+	if (fid == NULL) {
+		pthread_mutex_lock(&p9_handle->fid_lock);
+		clear_bit(p9_handle->fids_bitmap, fid_i);
+		pthread_cond_signal(&p9_handle->fid_cond);
+		pthread_mutex_unlock(&p9_handle->fid_lock);
+		return ENOMEM;
+	}
+
+	fid->fid = fid_i;
+	fid->open = 0;
+	*pfid = fid;
 	return 0;
 }

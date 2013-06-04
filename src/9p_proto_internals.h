@@ -160,6 +160,11 @@ typedef struct p9_fid__
     } specdata;
 } p9_fid_t;
 
+#define p9_skipheader( __cursor) \
+do {                             \
+  __cursor += P9_STD_HDR_SIZE;   \
+} while( 0 )
+
 #define p9_getptr( __cursor, __pvar, __type ) \
 do {                                          \
   __pvar = (__type *)__cursor;                \
@@ -208,6 +213,17 @@ do {                                       \
   *((uint64_t *)__cursor) = __qid.path;    \
   __cursor += sizeof( uint64_t );          \
 } while( 0 )
+
+#define p9_getqid( __cursor, __qid )       \
+do {                                       \
+  __qid.type = *((uint8_t *)__cursor);     \
+  __cursor += sizeof( uint8_t );           \
+  __qid.version = *((uint32_t *)__cursor); \
+  __cursor += sizeof( uint32_t );          \
+  __qid.path = *((uint64_t *)__cursor);    \
+  __cursor += sizeof(uint64_t);            \
+} while( 0 )
+
 
 /* Insert a non-null terminated string */
 #define p9_setstr( __cursor, __len, __str ) \

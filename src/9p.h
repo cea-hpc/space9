@@ -6,6 +6,7 @@
 #include <strings.h>    // ffsll
 
 #include "bitmap.h"
+#include "bucket.h"
 
 /* 9p-specific types */
 
@@ -80,10 +81,15 @@ typedef struct p9_qid {
 
 /* library types */
 
-struct fid {
+struct p9_fid {
+	uint32_t fid;
 	char path[MAXPATHLEN];
 	int open;
 	struct p9_qid qid;
+};
+
+struct p9_tag {
+	msk_data_t *rdata;
 };
 
 struct p9_handle {
@@ -92,22 +98,27 @@ struct p9_handle {
 	uint8_t *rdmabuf;
 	msk_data_t *rdata;
 	msk_data_t *wdata;
-	pthread_mutex_t ctx_lock;
-	pthread_cond_t ctx_cond;
+	pthread_mutex_t wdata_lock;
+	pthread_cond_t wdata_cond;
+	pthread_mutex_t recv_lock;
+	pthread_cond_t recv_cond;
 	pthread_mutex_t tag_lock;
 	pthread_cond_t tag_cond;
 	pthread_mutex_t fid_lock;
 	pthread_cond_t fid_cond;
-	bitmap_t *wdata_b;
+	bitmap_t *wdata_bitmap;
 	uint16_t max_tag;
-	bitmap_t *tags;
+	bitmap_t *tags_bitmap;
+	struct p9_tag *tags;
 	uint32_t max_fid;
-	bitmap_t *fids;
-//	rxt_node *fids_tree;
+	bitmap_t *fids_bitmap;
+	bucket_t *fids_bucket;
+	uint32_t nfids;
 	char aname[MAXPATHLEN];
 	uint32_t uid;
-	int recv_num;
+	uint32_t recv_num;
 	uint32_t msize;
+	struct p9_fid *root_fid;
 };
 
 struct fs_stats {
@@ -128,6 +139,28 @@ struct fs_stats {
 #define P9_NONUNAME	(uint32_t)(~0)
 #define P9_MAXWELEM	16
 
+static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
+	memcpy(ptag, data + sizeof(uint32_t) /* msg len */ + sizeof(uint8_t) /* msg type */, sizeof(uint16_t));
+}
+
+
+
+
+// 9p_callbacks.c
+
+void p9_disconnect_cb(msk_trans_t *trans);
+
+void p9_recv_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
+
+void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
+
+void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
+
+
+
+
+// 9p_core.c
+
 
 /**
  * @brief Get a buffer to fill that will be ok to send directly
@@ -146,7 +179,7 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
  * @param [IN]    data:		buffer to send
  * @return 0 on success, errno value on error
  */
-int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data);
+int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
 
 /**
  * @brief Waits for a reply with a given tag to arrive
@@ -166,5 +199,15 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag);
  * @return 0 on success, errno value on error
  */
 int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
+
+/**
+ * @brief Get a fid structure ready to be used
+ *
+ * @param [IN]    p9_handle:    connection handle
+ * @param [OUT]   pfid:         fid to be filled
+ * @return 0 on success, errno value on error
+ */
+int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
+
 
 #endif
