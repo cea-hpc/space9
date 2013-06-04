@@ -148,7 +148,7 @@ typedef struct p9_fid__
 {
   uint32_t                fid;
   p9_qid_t               qid;
-  char                    name[MAXNAMLEN];
+  char                    name[MAXPATHLEN];
   union
     {
        uint32_t      iounit;
@@ -212,6 +212,12 @@ do {                                       \
   __cursor += sizeof( uint32_t );          \
   *((uint64_t *)__cursor) = __qid.path;    \
   __cursor += sizeof( uint64_t );          \
+} while( 0 )
+
+#define p9_skipqid(__cursor)                   \
+do {                                           \
+  __cursor += sizeof( uint8_t )                \
+    + sizeof( uint32_t ) + sizeof( uint64_t ); \
 } while( 0 )
 
 #define p9_getqid( __cursor, __qid )       \

@@ -84,6 +84,7 @@ typedef struct p9_qid {
 struct p9_fid {
 	uint32_t fid;
 	char path[MAXPATHLEN];
+	int pathlen;
 	int open;
 	struct p9_qid qid;
 };
@@ -203,8 +204,8 @@ int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
 /**
  * @brief Get a fid structure ready to be used
  *
- * @param [IN]    p9_handle:    connection handle
- * @param [OUT]   pfid:         fid to be filled
+ * @param [IN]    p9_handle:	connection handle
+ * @param [OUT]   pfid:		fid to be filled
  * @return 0 on success, errno value on error
  */
 int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);

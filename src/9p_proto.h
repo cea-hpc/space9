@@ -69,12 +69,11 @@ int p9_flush(struct p9_handle *p9_handle, uint16_t tag);
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		existing fid to use
- * @param [IN]    newfid:	new fid to use
  * @param [IN]    path:		path to be based on. if NULL, clone the fid
- * @param [OUT]   qid:		reply qid, only set if non-NULL
+ * @param [OUT]   pnewfid:	new fid to use
  * @return 0 on success, errno value on error.
  */
-int p9_walk(struct p9_handle *p9_handle, uint32_t fid, uint32_t newfid, char* path, struct p9_qid *qid);
+int p9_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid);
 
 /**
  * @brief Read from a file.
@@ -95,7 +94,7 @@ int p9_walk(struct p9_handle *p9_handle, uint32_t fid, uint32_t newfid, char* pa
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-int p9_read(struct p9_handle *p9_handle, uint32_t fid, uint64_t offset, uint32_t count, char *data);
+int p9_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *data);
 
 /**
  * @brief Write to a file.
@@ -112,7 +111,7 @@ int p9_read(struct p9_handle *p9_handle, uint32_t fid, uint64_t offset, uint32_t
  * @param [IN]    buffer:	data to send
  * @return number of bytes written if >= 0, -errno on error
  */
-int p9_write(struct p9_handle *p9_handle, uint32_t fid, uint64_t offset, uint32_t count, char *data);
+int p9_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *data);
 
 /**
  * @brief Clunk a fid.
@@ -126,7 +125,7 @@ int p9_write(struct p9_handle *p9_handle, uint32_t fid, uint64_t offset, uint32_
  * @param [IN]    fid:		fid to clunk
  * @return 0 on success, errno value on error.
  */
-int p9_clunk(struct p9_handle *p9_handle, uint32_t fid);
+int p9_clunk(struct p9_handle *p9_handle, struct p9_fid *fid);
 
 /**
  * @brief Clunk a fid and unlinks the file associated with it.
@@ -140,7 +139,7 @@ int p9_clunk(struct p9_handle *p9_handle, uint32_t fid);
  * @param [IN]    fid:		fid to remove
  * @return 0 on success, errno value on error.
  */
-int p9_remove(struct p9_handle *p9_handle, uint32_t fid);
+int p9_remove(struct p9_handle *p9_handle, struct p9_fid *fid);
 
 /**
  * @brief Get filesystem information.
@@ -155,7 +154,7 @@ int p9_remove(struct p9_handle *p9_handle, uint32_t fid);
  * @param [OUT]   fs_stats:	Filled with infos. Must be non-NULL.
  * @return 0 on success, errno value on error.
  */
-int statfs(struct p9_handle *p9_handle, uint32_t fid, struct fs_stats *fs_stats);
+int statfs(struct p9_handle *p9_handle, struct p9_fid *fid, struct fs_stats *fs_stats);
 
 /**
  * @brief Open a file by its fid
@@ -173,7 +172,7 @@ int statfs(struct p9_handle *p9_handle, uint32_t fid, struct fs_stats *fs_stats)
  *                              currently, ganesha sets this to 0 anyway.
  * @return 0 on success, errno value on error.
  */
-int p9_lopen(struct p9_handle *p9_handle, uint32_t fid, uint32_t flags, struct p9_qid *qid, uint32_t *iounit);
+int p9_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, struct p9_qid *qid, uint32_t *iounit);
 
 /**
  * @brief Create a new file and open it.
@@ -247,7 +246,7 @@ int p9_mknod(struct p9_handle *p9_handle, uint32_t dfid, char *name, uint32_t mo
  * @param [IN]    name:		destination name
  * @return 0 on success, errno value on error.
  */
-int p9_rename(struct p9_handle *p9_handle, uint32_t fid, uint32_t dfid, char *name);
+int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t dfid, char *name);
 
 /**
  * @brief readlink.
@@ -262,7 +261,7 @@ int p9_rename(struct p9_handle *p9_handle, uint32_t fid, uint32_t dfid, char *na
  * @param [IN]    size:		size of the target buffer
  * @return 0 on success, errno value on error.
  */
-int p9_readlink(struct p9_handle *p9_handle, uint32_t fid, char *target, uint32_t size);
+int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size);
 
 /** p9_getattr
  *

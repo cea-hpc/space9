@@ -110,9 +110,11 @@ int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
 	p9_skipheader(cursor);
 	p9_getqid(cursor, fid->qid);
 	strncpy(fid->path, "/", 2);
+	fid->pathlen = 1;
 
 	p9c_putreply(p9_handle, data);
 
+	*pfid = fid;
 
 	return rc;
 }
@@ -120,7 +122,7 @@ int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
 
 
 /**
- * @brief Creates a new fid from path relative to a fid, or clone the said fid
+ * @brief Creates a new fid from path relative to a fid, or clone the said fid if path is NULL
  *
  *
  * size[4] Twalk tag[2] fid[4] newfid[4] nwname[2] nwname*(wname[s])
@@ -128,13 +130,80 @@ int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		existing fid to use
- * @param [IN]    newfid:	new fid to use
  * @param [IN]    path:		path to be based on. if NULL, clone the fid
- * @param [OUT]   qid:		reply qid, only set if non-NULL
+ * @param [OUT]   pnewfid:	new fid to use
  * @return 0 on success, errno value on error.
  */
-int p9_walk(struct p9_handle *p9_handle, uint32_t fid, uint32_t newfid, char* path, struct p9_qid *qid) {
-	return 0;
+int p9_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint16_t nwname, nwqid;
+	uint8_t *cursor;
+	struct p9_fid *newfid;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	rc = p9c_getfid(p9_handle, &newfid);
+	// FIXME: free buffer
+	if (rc)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TWALK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, newfid->fid, uint32_t);
+
+	/* clone or lookup ? */
+	if (!path) {
+		p9_setvalue(cursor, 0, uint16_t);
+		nwname = 0;
+	} else {
+		/** @todo: this assumes wname = 1 and no / in path, fix me */
+		if (strchr(path, '/') != NULL)
+			return EINVAL;
+
+		nwname = 1;
+		p9_setvalue(cursor, nwname, uint16_t);
+		p9_setstr(cursor, strnlen(path, MAXNAMLEN), path);
+	}
+
+	p9_setmsglen(cursor, data->data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_skipheader(cursor);
+	p9_getvalue(cursor, nwqid, uint16_t);
+	if (nwqid != nwname) {
+		return EIO;
+	}
+	if (nwqid != 0) {
+		while (nwqid > 1) {
+			p9_skipqid(cursor);
+			nwqid--;
+		}
+		p9_getqid(cursor, fid->qid);
+	}
+	strncpy(newfid->path, fid->path, fid->pathlen);
+	strncpy(newfid->path + fid->pathlen, "/", 1);
+	strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
+	newfid->path[MAXPATHLEN-1] = '\0';
+	newfid->pathlen = strlen(newfid->path);
+
+	p9c_putreply(p9_handle, data);
+
+	*pnewfid = newfid;
+
+	return rc;
 }
 
 
@@ -150,6 +219,34 @@ int p9_walk(struct p9_handle *p9_handle, uint32_t fid, uint32_t newfid, char* pa
  * @param [IN]    fid:		fid to clunk
  * @return 0 on success, errno value on error.
  */
-int p9_clunk(struct p9_handle *p9_handle, uint32_t fid) {
-	return 0;
+int p9_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t *cursor;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TCLUNK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setmsglen(cursor, data->data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_skipheader(cursor);
+	/* nothing else */
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
 }
