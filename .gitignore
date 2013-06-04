@@ -7,8 +7,8 @@ doxygen
 *~
 m4
 \#*\#
-9p-*.tar.gz
-9p.spec
+lib9p-*.tar.gz
+lib9p.spec
 cscope*
 Makefile
 Makefile.in

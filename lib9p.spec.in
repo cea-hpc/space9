@@ -1,0 +1,60 @@
+Summary: The 9p/RDMA library
+Name: lib9p
+Version: @VERSION@
+Release: 1.git@_GIT_HEAD_COMMIT_ABBREV@
+Group: Application/Devel
+Packager: Dominique Martinet <dominique.martinet@cea.fr>
+License: CeCILL
+Source: %{name}-%{version}.tar.gz
+BuildRoot: /tmp/%{name}-buildroot
+Prefix: %{_prefix}
+Requires: librdmacm, libibverbs
+BuildRequires: librdmacm-devel, libibverbs-devel, gcc, automake, libtool
+
+%package devel
+Group: Application/Devel
+Summary: Development files for libmooshika
+Requires: libmooshika-devel
+
+%package 9p_shell
+Group:Application/Devel
+Summary: a 9p/rdma shell
+
+%description
+This package contains the 9p/rdma library
+
+%description devel
+Development files for lib9p
+
+%description 9p_shell
+a basic 9P/RDMA shell
+
+%prep
+%setup -q -n %{name}-%{version}
+
+%build
+%configure @ac_configure_args@
+make
+
+%install
+rm -rf %{buildroot}
+%makeinstall
+
+%clean
+rm -rf %{buildroot}
+
+%files
+%{_libdir}/*.so*
+%{_libdir}/*.la
+
+%files 9p_shell
+%{_bindir}/9p_shell
+
+%files devel
+%{_includedir}/*
+%{_libdir}/*.a
+%{_libdir}/pkgconfig/*.pc
+
+%changelog
+
+

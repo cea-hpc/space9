@@ -1,0 +1,11 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: lib9p
+Description: lib9p - 9p/rdma helper library
+Requires:
+Version: @VERSION@
+Libs: -L${libdir} -l9p -lmooshika -lpthread -ldl -lrdmacm -libverbs
+Cflags: -I{includedir}

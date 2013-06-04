@@ -346,23 +346,3 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 	*pp9_handle = p9_handle;
 	return 0;
 }
-
-
-int main() {
-	struct p9_handle *p9_handle;
-	int ret;
-
-	ret = p9_init(&p9_handle, "sample.conf");
-	if (ret) {
-		ERROR_LOG("Init failure: %s (%d)", strerror(ret), ret);
-		return ret;
-	}
-
-	INFO_LOG("Init success");
-
-	getc(stdin);
-
-	p9_destroy(&p9_handle);
-
-	return 0;
-}
