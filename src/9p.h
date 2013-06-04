@@ -3,7 +3,6 @@
 
 #include <dirent.h>     // MAXNAMLEN
 #include <sys/param.h>  // MAXPATHLEN
-#include <strings.h>    // ffsll
 
 #include "bitmap.h"
 #include "bucket.h"
@@ -210,5 +209,18 @@ int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
  */
 int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
 
+/**
+ * @brief Release a fid after clunk
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to release
+ * @return 0 on success, errno value on error
+ */
+int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid);
+
+// 9p_init.c
+
+int p9_init(struct p9_handle **pp9_handle, char *conf_file);
+void p9_destroy(struct p9_handle **pp9_handle);
 
 #endif

@@ -141,3 +141,22 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	*pfid = fid;
 	return 0;
 }
+
+/**
+ * @brief Release a fid after clunk
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to release
+ * @return 0 on success, errno value on error
+ */
+int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid) {
+
+	pthread_mutex_lock(&p9_handle->fid_lock);
+	clear_bit(p9_handle->fids_bitmap, fid->fid);
+	pthread_cond_signal(&p9_handle->fid_cond);
+	pthread_mutex_unlock(&p9_handle->fid_lock);
+
+	bucket_put(p9_handle->fids_bucket, fid);
+
+	return 0;
+}

@@ -1,6 +1,8 @@
 #ifndef P9_PROTO
 #define P9_PROTO
 
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /**
  * @brief Must be used first uppon connexion:
@@ -277,6 +279,7 @@ int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, u
  * @param
  * @return 0 on success, errno value on error.
  */
+int p9_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct stat *stat);
 
 /** p9_setattr
  *

@@ -35,7 +35,7 @@ static inline void bucket_destroy(bucket_t *bucket) {
 	free(bucket);
 }
 
-static inline void bucket_insert(bucket_t *bucket, void *item) {
+static inline void bucket_put(bucket_t *bucket, void *item) {
 	pthread_mutex_lock(&bucket->lock);
 	if (bucket->count >= bucket->size) {
 		free(item);

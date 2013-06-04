@@ -247,6 +247,7 @@ int p9_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	/* nothing else */
 
 	p9c_putreply(p9_handle, data);
+	p9c_putfid(p9_handle, fid);
 
 	return rc;
 }
