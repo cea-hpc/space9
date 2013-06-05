@@ -20,7 +20,7 @@
  * @param [INOUT] p9_handle: used to define the msize, which value is updated on success.
  * @return 0 on success, errno value on error.
  */
-int p9_version(struct p9_handle *p9_handle) {
+int p9p_version(struct p9_handle *p9_handle) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -92,7 +92,7 @@ int p9_version(struct p9_handle *p9_handle) {
  * @param [OUT]   fid:		initial fid to populate
  * @return 0 on success, errno value on error.
  */
-int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
+int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
 	int rc;
 	uint8_t msgtype;
 	msk_data_t *data;
@@ -170,7 +170,7 @@ int p9_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) {
  * @param [OUT]   pnewfid:	new fid to use
  * @return 0 on success, errno value on error.
  */
-int p9_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid) {
+int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -273,7 +273,7 @@ int p9_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct 
  * @param [IN]    fid:		fid to clunk
  * @return 0 on success, errno value on error.
  */
-int p9_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
+int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -341,7 +341,7 @@ int p9_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
  *                              currently, ganesha sets this to 0 anyway.
  * @return 0 on success, errno value on error.
  */
-int p9_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, uint32_t *iounit) {
+int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, uint32_t *iounit) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -411,7 +411,7 @@ int p9_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, ui
  * @param [OUT]   iounit:	iounit to set if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint32_t flags, uint32_t mode,
+int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint32_t flags, uint32_t mode,
                uint32_t gid, uint32_t *iounit) {
 	int rc;
 	msk_data_t *data;
@@ -483,7 +483,7 @@ int p9_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint
  * @param [OUT]   qid:		qid to fill if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, char *symtgt, uint32_t gid,
+int p9p_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, char *symtgt, uint32_t gid,
                struct p9_qid *qid) {
 	int rc;
 	msk_data_t *data;
@@ -555,7 +555,7 @@ int p9_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, cha
  * @param [OUT]   qid:		qid to fill if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_mknod(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t major, uint32_t minor,
+int p9p_mknod(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t major, uint32_t minor,
              uint32_t gid, struct p9_qid *qid) {
 	int rc;
 	msk_data_t *data;
@@ -625,7 +625,7 @@ int p9_mknod(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint3
  * @param [IN]    name:		destination name
  * @return 0 on success, errno value on error.
  */
-int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfid, char *name) {
+int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfid, char *name) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -690,7 +690,7 @@ int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *df
  * @param [IN]    size:		size of the target buffer
  * @return 0 on success, errno value on error.
  */
-int p9_zreadlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata) {
+int p9p_zreadlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -738,7 +738,7 @@ int p9_zreadlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget
 	return rc;
 }
 
-int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size) {
+int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size) {
 	char *ztarget;
 	msk_data_t *data;
 	uint32_t zsize;
@@ -748,7 +748,7 @@ int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, u
 	if (p9_handle == NULL || fid == NULL || target == NULL)
 		return EINVAL;
 
-	rc = p9_zreadlink(p9_handle, fid, &ztarget, &zsize, &data);
+	rc = p9p_zreadlink(p9_handle, fid, &ztarget, &zsize, &data);
 	if (zsize > 0)
 		strncpy(target, ztarget, MIN(size, zsize));
 

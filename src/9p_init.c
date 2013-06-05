@@ -32,7 +32,11 @@ enum conftype {
 	SIZE
 };
 
-struct conf { char *token; enum conftype type; int offset; };
+struct conf {
+	char *token;
+	enum conftype type;
+	int offset;
+};
 
 #define offsetof(type, member)  __builtin_offsetof (type, member)
 
@@ -309,11 +313,11 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		if (rc)
 			break;
 
-		rc = p9_version(p9_handle);
+		rc = p9p_version(p9_handle);
 		if (rc)
 			break;
 
-		rc = p9_attach(p9_handle, p9_conf.uid, &p9_handle->root_fid);
+		rc = p9p_attach(p9_handle, p9_conf.uid, &p9_handle->root_fid);
 		if (rc)
 			break;
 	} while (0);

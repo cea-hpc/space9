@@ -13,11 +13,12 @@ lib9p_la_LIBADD += -lmooshika -lrdmacm -libverbs
 endif
 
 bin_PROGRAMS = 9p_shell
-9p_shell_SOURCES = 9p_shell.c
+9p_shell_SOURCES = 9p_shell.c 9p_shell_functions.c
 9p_shell_LDADD = lib9p.la
 
 
 pkgconfigdir=$(libdir)/pkgconfig
 pkgconfig_DATA = lib9p.pc
 
-
+sh: 9p_shell
+	rlwrap ./9p_shell

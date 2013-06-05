@@ -3,6 +3,7 @@
 
 #include <dirent.h>     // MAXNAMLEN
 #include <sys/param.h>  // MAXPATHLEN
+#include <string.h>     // memset
 
 #include "bitmap.h"
 #include "bucket.h"
