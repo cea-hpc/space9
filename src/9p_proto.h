@@ -174,28 +174,28 @@ int statfs(struct p9_handle *p9_handle, struct p9_fid *fid, struct fs_stats *fs_
  *                              currently, ganesha sets this to 0 anyway.
  * @return 0 on success, errno value on error.
  */
-int p9_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, struct p9_qid *qid, uint32_t *iounit);
+int p9_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, uint32_t *iounit);
 
 /**
  * @brief Create a new file and open it.
  * This will fail if the file already exists.
  *
  *
- * size[4] Tlcreate tag[2] dfid[4] name[s] flags[4] mode[4] gid[4]
+ * size[4] Tlcreate tag[2] fid[4] name[s] flags[4] mode[4] gid[4]
  * size[4] Rlcreate tag[2] qid[13] iounit[4]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    dfid:		fid of the directory where to create the new file
+ * @param [INOUT] fid:		fid of the directory where to create the new file.
+ *				Will be the created file's on success
  * @param [IN]    name:		name of the new file
  * @param [IN]    flags:	Linux kernel intent bits
  * @param [IN]    mode:		Linux creat(2) mode bits
  * @param [IN]    gid:		effective gid
- * @param [OUT]   qid:		qid to fill if non-NULL
  * @param [OUT]   iounit:	iounit to set if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_lcreate(struct p9_handle *p9_handle, uint32_t dfid, char *name, uint32_t flags, uint32_t mode,
-               uint32_t gid, struct p9_qid *qid, uint32_t *iounit);
+int p9_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint32_t flags, uint32_t mode,
+               uint32_t gid, uint32_t *iounit);
 
 /**
  * @brief Create a symlink
@@ -212,7 +212,7 @@ int p9_lcreate(struct p9_handle *p9_handle, uint32_t dfid, char *name, uint32_t 
  * @param [OUT]   qid:		qid to fill if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_symlink(struct p9_handle *p9_handle, uint32_t dfid, char *name, char *symtgt, uint32_t gid,
+int p9_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, char *symtgt, uint32_t gid,
                struct p9_qid *qid);
 
 /**
@@ -232,7 +232,7 @@ int p9_symlink(struct p9_handle *p9_handle, uint32_t dfid, char *name, char *sym
  * @param [OUT]   qid:		qid to fill if non-NULL
  * @return 0 on success, errno value on error.
  */
-int p9_mknod(struct p9_handle *p9_handle, uint32_t dfid, char *name, uint32_t mode, uint32_t major, uint32_t minor,
+int p9_mknod(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t major, uint32_t minor,
              uint32_t gid, struct p9_qid *qid);
 
 /**
@@ -248,7 +248,7 @@ int p9_mknod(struct p9_handle *p9_handle, uint32_t dfid, char *name, uint32_t mo
  * @param [IN]    name:		destination name
  * @return 0 on success, errno value on error.
  */
-int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t dfid, char *name);
+int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfid, char *name);
 
 /**
  * @brief readlink.
@@ -263,6 +263,7 @@ int p9_rename(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t dfid, ch
  * @param [IN]    size:		size of the target buffer
  * @return 0 on success, errno value on error.
  */
+int p9_zreadlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata);
 int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size);
 
 /** p9_getattr
@@ -279,7 +280,7 @@ int p9_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, u
  * @param
  * @return 0 on success, errno value on error.
  */
-int p9_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct stat *stat);
+//int p9_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct stat *stat);
 
 /** p9_setattr
  *
@@ -323,9 +324,14 @@ int p9_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct stat *sta
  *   data is: qid[13] offset[8] type[1] name[s]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    fid:		directory fid
+ * @param [IN]    offset:	offset to start from
+ * @param [INOUT] count:	number of dirent we can fill/actually filled on return
+ * @param [OUT]   dirent:	dirent to fill. Must NOT be NULL.
  * @return 0 on success, errno value on error.
  */
+int p9_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t *count,
+               struct dirent* dirent);
 
 /** p9_fsync
  *
