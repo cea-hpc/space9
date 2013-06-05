@@ -1,9 +1,11 @@
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <mooshika.h>
 #include "9p.h"
 #include "9p_proto.h"
 #include "9p_proto_internals.h"
+#include "utils.h"
 
 /**
  * @brief Must be used first uppon connexion:

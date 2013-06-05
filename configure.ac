@@ -7,13 +7,6 @@ AC_GNU_SOURCE
 AC_PROG_CC
 AC_PROG_LIBTOOL
 
-# Check for mooshika lib and header
-AC_SEARCH_LIBS([msk_init], [mooshika], [], [
-	AC_MSG_ERROR([unable to find mooshika])
-])
-AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR(missing mooshika headers)])
-
-
 AC_DEFINE( [VERSION_COMMENT], ["9p/rdma userspace library"], [No Comment])
 
 # Git latest commit
@@ -35,6 +28,23 @@ else
   AC_DEFINE_UNQUOTED( [_GIT_DESCRIBE], "$git_describe", [Result of git-describe --long])
   AC_SUBST(_GIT_HEAD_COMMIT_ABBREV, .${head_commit:0:7})
 fi
+
+AC_ARG_ENABLE(tcp,
+	AC_HELP_STRING([--enable-tcp], [Use TCP emulation for mooshika instead of rdma (disabled)]))
+
+
+# Check for mooshika lib and header
+AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR(missing mooshika headers)])
+
+
+#don't add -lmooshika if tcp emulation is used
+if test "x$enable_tcp" != "xyes" ; then
+	AC_SEARCH_LIBS([msk_init], [mooshika], [], [
+		AC_MSG_ERROR([unable to find mooshika])
+	])
+fi
+
+AM_CONDITIONAL(ENABLE_TCP, test "x$enable_tcp" == "xyes")
 
 
 #for exporting to spec file

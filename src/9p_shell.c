@@ -7,7 +7,7 @@
 #include <mooshika.h>
 #include "9p.h"
 #include "9p_proto.h"
-#include "log.h"
+#include "utils.h"
 #include "settings.h"
 
 int main() {
@@ -20,7 +20,7 @@ int main() {
                 return ret;
         }
 
-        INFO_LOG("Init success");
+        INFO_LOG(1, "Init success");
 
         getc(stdin);
 

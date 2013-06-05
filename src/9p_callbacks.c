@@ -5,7 +5,7 @@
 #include <assert.h>
 #include <mooshika.h>
 #include "9p.h"
-#include "log.h"
+#include "utils.h"
 #include "settings.h"
 
 

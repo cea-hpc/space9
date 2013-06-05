@@ -93,9 +93,11 @@ struct p9_tag {
 };
 
 struct p9_handle {
+	uint16_t max_tag;
+	char aname[MAXPATHLEN];
+	uint8_t *rdmabuf;
 	msk_trans_t *trans;
 	struct ibv_mr *mr;
-	uint8_t *rdmabuf;
 	msk_data_t *rdata;
 	msk_data_t *wdata;
 	pthread_mutex_t wdata_lock;
@@ -107,17 +109,16 @@ struct p9_handle {
 	pthread_mutex_t fid_lock;
 	pthread_cond_t fid_cond;
 	bitmap_t *wdata_bitmap;
-	uint16_t max_tag;
 	bitmap_t *tags_bitmap;
 	struct p9_tag *tags;
 	uint32_t max_fid;
 	bitmap_t *fids_bitmap;
 	bucket_t *fids_bucket;
 	uint32_t nfids;
-	char aname[MAXPATHLEN];
 	uint32_t uid;
 	uint32_t recv_num;
 	uint32_t msize;
+	uint32_t debug;
 	struct p9_fid *root_fid;
 };
 
