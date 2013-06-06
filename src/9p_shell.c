@@ -16,13 +16,13 @@
 struct functions {
 	char *name;
 	char *description;
-	void (*func)(struct current_context *, char *);
+	int (*func)(struct current_context *, char *);
 };
 
 static int run_threads;
 
 
-static void print_help(struct current_context *, char *arg);
+static int print_help(struct current_context *, char *arg);
 
 static struct functions functions[] = {
 	{ "help", "help [<topic>]: this text", print_help },
@@ -33,19 +33,21 @@ static struct functions functions[] = {
 	{ NULL, NULL, NULL }
 };
 
-static void print_help(struct current_context *unused_ctx, char *arg) {
+static int print_help(struct current_context *unused_ctx, char *arg) {
 	struct functions *fn;
 	for (fn=functions; fn->name != NULL; fn++) {
 		if (strncmp(fn->name, arg, strlen(fn->name)))
 			continue;
 
 		printf("%s\n", fn->description);
-		return;
+		return 0;
 	}
 
 	for (fn=functions; fn->name != NULL; fn++) {
 		printf("%s\n", fn->description);
 	}
+
+	return 0;
 }
 
 static void panic(int signal) {
@@ -57,14 +59,15 @@ static void panic(int signal) {
 
 int main() {
 	char line[BUF_SIZE];
+	char *s;
 	struct functions *fn;
 	struct current_context ctx;
-        int ret, len;
+        int rc, len;
 
-        ret = p9_init(&ctx.p9_handle, "sample.conf");
-        if (ret) {
-                ERROR_LOG("Init failure: %s (%d)", strerror(ret), ret);
-                return ret;
+        rc = p9_init(&ctx.p9_handle, "sample.conf");
+        if (rc) {
+                ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
+                return rc;
         }
 
 	run_threads = 1;
@@ -72,10 +75,20 @@ int main() {
 
         INFO_LOG(1, "Init success");
 
+	ctx.cwd = ctx.p9_handle->root_fid;
+
 	while (run_threads) {
 		printf("> ");
 		if (fgets(line, BUF_SIZE, stdin) == NULL)
 			break;
+
+		if (line[0] == '\n')
+			continue;
+
+		s = strchr(line, '\n');
+		if (!s)
+			break;
+		s[0] = '\0';
 
 		for (fn=functions; fn->name != NULL; fn++) {
 			len = strlen(fn->name);
@@ -83,16 +96,20 @@ int main() {
 			if (strncmp(fn->name, line, len))
 				continue;
 
-			if (line[len] == '\n' || line[len] == ' ')
-				fn->func(&ctx, line + strlen(fn->name) + 1);
+			if (line[len] == '\0' || line[len] == ' ')
+				rc = fn->func(&ctx, line + strlen(fn->name) + 1);
 			else /* wasn't really this command */
 				continue;
 
 			break;
 		}
+
+		if (fn->name == NULL)
+			printf("No such command: %s\n", line);
+
 	}
 
         p9_destroy(&ctx.p9_handle);
 
-        return 0;
+        return rc;
 }

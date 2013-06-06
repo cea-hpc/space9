@@ -1,3 +1,6 @@
+#include <stdio.h>
+#include <errno.h>
+
 #define ERROR_LOG(fmt, args...) fprintf(stderr, "ERROR: %s (%d), %s: " fmt "\n", __FILE__, __LINE__, __func__, ##args)
 //#define ERROR_LOG(fmt, args...)
 #define INFO_LOG(debug, fmt, args...) if (debug) fprintf(stderr, "INFO:  %s (%d), %s: " fmt "\n", __FILE__, __LINE__, __func__, ##args)

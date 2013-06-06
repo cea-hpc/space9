@@ -237,7 +237,8 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				p9_getqid(cursor, fid->qid);
 			}
 			strncpy(newfid->path, fid->path, fid->pathlen);
-			strncpy(newfid->path + fid->pathlen, "/", 1);
+			if (fid->path[fid->pathlen - 1] != '/')
+				strncpy(newfid->path + fid->pathlen, "/", 1);
 			strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
 			newfid->path[MAXPATHLEN-1] = '\0';
 			newfid->pathlen = strlen(newfid->path);
