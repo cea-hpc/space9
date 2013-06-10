@@ -384,9 +384,16 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset
  * size[4] Rmkdir tag[2] qid[13]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    dfid:		fid of the directory where the new symlink will be created
+ * @param [IN]    name:		name of the link
+ * @param [IN]    mode:		creation mode
+ * @param [IN]    gid:		effective gid
+ * @param [OUT]   qid:		qid to fill if non-NULL
  * @return 0 on success, errno value on error.
  */
+int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t gid,
+               struct p9_qid *qid);
+
 
 /** p9_renameat
  *

@@ -34,3 +34,15 @@ static inline int set_size(uint32_t *val, char *unit) {
 
         return 0;
 }
+
+
+/**
+ * @brief canonicalize path
+ *
+ * @param path to canonicalize, must be null terminated
+ * @return length of new path if >= 0, -errno on error
+ */
+int path_canonicalizer(char *path);
+
+int path_basename(char *path, char *dst, size_t dst_len);
+int path_dirname(char *path, char *dst, size_t dst_len);

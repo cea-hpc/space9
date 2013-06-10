@@ -243,7 +243,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
 			}
 			newfid->path[MAXPATHLEN-1] = '\0';
-			newfid->pathlen = strlen(newfid->path);
+			newfid->pathlen = path_canonicalizer(newfid->path);
 
 
 			*pnewfid = newfid;
@@ -775,7 +775,7 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
  * @param [OUT]   qid:		new directory qid if not NULL
  * @return 0 on success, errno value on error.
  */
-int p9_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode,
+int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode,
                uint32_t gid, struct p9_qid *qid) {
 	int rc;
 	msk_data_t *data;

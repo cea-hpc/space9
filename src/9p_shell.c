@@ -26,6 +26,7 @@ static int print_help(struct current_context *, char *arg);
 
 static struct functions functions[] = {
 	{ "help", "help [<topic>]: this text", print_help },
+	{ "pwd", "pwd: print current directory", p9s_pwd },
 	{ "ls", "ls [-l] [<dir>]: List files in a directory", p9s_ls },
 	{ "cd", "cd <dir>: navigates to directory", p9s_cd },
 	{ "cat", "cat <file>: cat files...", p9s_cat },
