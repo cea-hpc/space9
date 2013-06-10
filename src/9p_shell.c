@@ -75,7 +75,7 @@ int main() {
 
         INFO_LOG(1, "Init success");
 
-	ctx.cwd = ctx.p9_handle->root_fid;
+	p9p_walk(ctx.p9_handle, ctx.p9_handle->root_fid, NULL, &ctx.cwd);
 
 	while (run_threads) {
 		printf("> ");

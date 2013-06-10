@@ -198,7 +198,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 	p9_setvalue(cursor, newfid->fid, uint32_t);
 
 	/* clone or lookup ? */
-	if (!path) {
+	if (!path || path[0] == '\0') {
 		p9_setvalue(cursor, 0, uint16_t);
 		nwname = 0;
 	} else {
@@ -237,9 +237,11 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				p9_getqid(cursor, fid->qid);
 			}
 			strncpy(newfid->path, fid->path, fid->pathlen);
-			if (fid->path[fid->pathlen - 1] != '/')
-				strncpy(newfid->path + fid->pathlen, "/", 1);
-			strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
+			if (path) {
+				if (fid->path[fid->pathlen - 1] != '/')
+					strncpy(newfid->path + fid->pathlen, "/", 1);
+				strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
+			}
 			newfid->path[MAXPATHLEN-1] = '\0';
 			newfid->pathlen = strlen(newfid->path);
 
@@ -752,6 +754,76 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
 	rc = p9p_zreadlink(p9_handle, fid, &ztarget, &zsize, &data);
 	if (zsize > 0)
 		strncpy(target, ztarget, MIN(size, zsize));
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+
+/** p9_mkdir
+ *
+ *
+ * size[4] Tmkdir tag[2] dfid[4] name[s] mode[4] gid[4]
+ * size[4] Rmkdir tag[2] qid[13]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    dfid:		directory fid where to create dir
+ * @param [IN]    name:		name of the new directory
+ * @param [IN]    mode:		mode
+ * @param [IN]    gid:		gid
+ * @param [OUT]   qid:		new directory qid if not NULL
+ * @return 0 on success, errno value on error.
+ */
+int p9_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode,
+               uint32_t gid, struct p9_qid *qid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || name == NULL || dfid == NULL || strchr(name, '/') != NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TMKDIR, tag);
+	p9_setvalue(cursor, dfid->fid, uint32_t);
+	p9_setstr(cursor, strlen(name), name);
+	p9_setvalue(cursor, mode, uint32_t);
+	p9_setvalue(cursor, gid, uint32_t);
+	p9_setmsglen(cursor, data->data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RMKDIR:
+			if (qid)
+				p9_getqid(cursor, *qid);
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TMKDIR, tag);
+			rc = EIO;;
+	}
 
 	p9c_putreply(p9_handle, data);
 

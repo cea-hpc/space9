@@ -13,7 +13,7 @@ int p9s_cd(struct current_context *ctx, char *arg) {
 	char *end;
 	struct p9_fid *fid;
 
-	if (arg[0] = '/') {
+	if (arg[0] == '/') {
 		rc = p9p_clunk(ctx->p9_handle, ctx->cwd);
 		if (rc) {
 			printf("clunk failed on %s, error: %s (%d)\n", ctx->cwd->path, strerror(rc), rc);
