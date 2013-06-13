@@ -23,6 +23,7 @@ static inline bucket_t *bucket_init(size_t max, size_t alloc_size) {
 		bucket->size = max;
 		bucket->first = 0;
 		bucket->last = 0;
+		bucket->count = 0;
 		bucket->alloc_size = alloc_size;
 		pthread_mutex_init(&bucket->lock, NULL);
 	}
@@ -47,9 +48,11 @@ static inline void bucket_put(bucket_t *bucket, void *item) {
 	pthread_mutex_unlock(&bucket->lock);
 }
 
+
 static inline void * bucket_get(bucket_t *bucket) {
 	void * item;
 	pthread_mutex_lock(&bucket->lock);
+
 	if (bucket->count == 0) {
 		item = malloc(bucket->alloc_size);
 	} else {

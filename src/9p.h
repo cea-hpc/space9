@@ -153,9 +153,8 @@ static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
 void p9_disconnect_cb(msk_trans_t *trans);
 
 void p9_recv_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-
 void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-
+void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 
 
@@ -219,6 +218,20 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
  * @return 0 on success, errno value on error
  */
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid);
+
+static inline int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
+	data->mr = msk_reg_mr(p9_handle->trans, data->data, data->max_size, IBV_ACCESS_LOCAL_WRITE);
+	if (data->mr == NULL) {
+		return -1;
+	}
+
+	return 0;
+}
+
+static inline int p9c_dereg_mr(msk_data_t *data) {
+	return msk_dereg_mr(data->mr);
+}
+
 
 // 9p_init.c
 

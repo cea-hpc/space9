@@ -1,9 +1,21 @@
+
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
 #include <signal.h>
 #include <mooshika.h>
+
+#ifdef HAVE_READLINE
+#include <readline/readline.h>
+#include <readline/history.h>
+#endif
+
 #include "9p.h"
 #include "9p_proto.h"
 #include "utils.h"
@@ -30,6 +42,7 @@ static struct functions functions[] = {
 	{ "ls", "ls [-l] [<dir>]: List files in a directory", p9s_ls },
 	{ "cd", "cd <dir>: navigates to directory", p9s_cd },
 	{ "cat", "cat <file>: cat files...", p9s_cat },
+	{ "xwrite", "xwrite <file> <content>: writes content into file (truncates)", p9s_xwrite },
 	{ "mkdir", "mkdir <dir>: creates directory", p9s_mkdir },
 	{ NULL, NULL, NULL }
 };
@@ -59,7 +72,7 @@ static void panic(int signal) {
 }
 
 int main() {
-	char line[BUF_SIZE];
+	char *line;
 	char *s;
 	struct functions *fn;
 	struct current_context ctx;
@@ -78,11 +91,40 @@ int main() {
 
 	p9p_walk(ctx.p9_handle, ctx.p9_handle->root_fid, NULL, &ctx.cwd);
 
+#ifdef HAVE_READLINE
+	using_history();
+#else
+	line = malloc(BUF_SIZE);
+#endif
+
 	while (run_threads) {
-		printf("> ");
-		if (fgets(line, BUF_SIZE, stdin) == NULL)
+#ifdef HAVE_READLINE
+		line = readline("> ");
+
+		/* EOF */
+		if (!line)
 			break;
 
+		s = line;
+
+		rc = history_expand(s, &line);
+
+		add_history(line);
+		if (rc == -1) {
+			printf("Expansion error?\n");
+			continue;
+		} else if (rc == 2) { /* :p or something, print but no execute history */
+			printf("%s\n", line);
+			continue;
+		}
+#else		
+		printf("> ");
+
+		if (!line)
+			break;
+
+		if (fgets(line, BUF_SIZE, stdin) == NULL)
+			break;
 		if (line[0] == '\n')
 			continue;
 
@@ -90,6 +132,10 @@ int main() {
 		if (!s)
 			break;
 		s[0] = '\0';
+#endif
+
+		if (!run_threads)
+			break;
 
 		for (fn=functions; fn->name != NULL; fn++) {
 			len = strlen(fn->name);
@@ -108,7 +154,12 @@ int main() {
 		if (fn->name == NULL)
 			printf("No such command: %s\n", line);
 
+#ifdef HAVE_READLINE
+		free(s);
+#endif
 	}
+
+	p9p_clunk(ctx.p9_handle, ctx.cwd);
 
         p9_destroy(&ctx.p9_handle);
 

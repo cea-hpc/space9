@@ -78,6 +78,24 @@ int p9p_flush(struct p9_handle *p9_handle, uint16_t tag);
 int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid);
 
 /**
+ * @brief zero-copy read from a file.
+ * Even if count is > msize, more won't be received
+ * There MUST be a finalize call to p9c_putreply(p9_handle, data) on success
+ *
+ * size[4] Tread tag[2] fid[4] offset[8] count[4]
+ * size[4] Rread tag[2] count[4] data[count]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    offset:	offset from which to read
+ * @param [IN]    count:	count of bytes to read
+ * @param [OUT]   zbuf:		data pointer here
+ * @return number of bytes read if >= 0, -errno on error.
+ *          0 indicates eof?
+ */
+int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, uint32_t *zsize, msk_data_t **pdata);
+
+/**
  * @brief Read from a file.
  * Even if count is > msize, more won't be received
  *
@@ -89,14 +107,27 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
  * @param [IN]    fid:		fid to use
  * @param [IN]    offset:	offset from which to read
  * @param [IN]    count:	count of bytes to read
- * @param [OUT]   buffer:	data is copied there.
- *                This is $#@!^ inefficient, come up with a release mechanism to give just a pointer here.
- *                Cannot use the data directly to post a recv because recv order isn't controlled
- *                Where's our rdma write, huh?
+ * @param [OUT]   buf:		data is copied there.
  * @return number of bytes read if >= 0, -errno on error.
- *          0 indicates eof?
+ *          0 indicates eof
  */
-int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *data);
+int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *buf);
+
+/**
+ * @brief zero-copy write from a file.
+ * Even if count is > msize, more won't be received
+ * data MUST be registered with p9c_reg_mr(p9_handle, data) first
+ *
+ * size[4] Twrite tag[2] fid[4] offset[8] count[4] data[count]
+ * size[4] Rwrite tag[2] count[4]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    offset:	offset from which to write
+ * @param [IN]    data:		msk_registered msk_data pointer here
+ * @return number of bytes written if >= 0, -errno on error.
+ */
+int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, msk_data_t *data);
 
 /**
  * @brief Write to a file.
@@ -263,7 +294,7 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
  * @param [IN]    size:		size of the target buffer
  * @return 0 on success, errno value on error.
  */
-int p9p_zreadlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata);
+int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata);
 int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size);
 
 /** p9_getattr
@@ -325,13 +356,14 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		directory fid
- * @param [IN]    offset:	offset to start from
- * @param [INOUT] count:	number of dirent we can fill/actually filled on return
- * @param [OUT]   dirent:	dirent to fill. Must NOT be NULL.
- * @return 0 on success, errno value on error.
+ * @param [INOUT] offset:	offset to start from, will be set to where we left off on return
+ * @param [IN]    callback:	callback to call for each entry.
+ *                              processing stops if callback returns non-zero
+ * @param [IN]    callback_arg:	user-provided callback arg
+ * @return 0 on eod, number of entires read if positive, -errno value on error (or callback return value)
  */
-int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t *count,
-               struct dirent* dirent);
+typedef int (*p9p_readdir_cb)(void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
+int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *offset, p9p_readdir_cb callback, void *callback_arg);
 
 /** p9_fsync
  *

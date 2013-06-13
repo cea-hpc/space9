@@ -12,12 +12,12 @@
 
 struct p9_conf {
 	char aname[MAXPATHLEN];
-	char uname[MAXNAMLEN];
 	uint32_t uid;
 	uint32_t recv_num;
 	uint32_t max_fid;
 	uint32_t max_tag;
 	uint32_t msize;
+	uint32_t debug;
 	struct msk_trans_attr trans_attr;
 };
 
@@ -45,13 +45,13 @@ static struct conf conf_array[] = {
 	{ "port", PORT, 0 },
 	{ "server6", IP6, 0 },
 	{ "port6", PORT6, 0 },
-	{ "debug", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, debug) },
+	{ "rdma_debug", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, debug) },
+	{ "debug", UINT, offsetof(struct p9_conf, debug) },
 	{ "msize", SIZE, offsetof(struct p9_conf, msize) },
 	{ "recv_num", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, rq_depth)  },
 	{ "rq_depth", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, rq_depth) },
 	{ "sq_depth", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, sq_depth) },
 	{ "aname", STRING, offsetof(struct p9_conf, aname) },
-	{ "uname", STRING, offsetof(struct p9_conf, uname) },
 	{ "uid", UINT, offsetof(struct p9_conf, uid) },
 	{ "max_fid", UINT, offsetof(struct p9_conf, uid) },
 	{ "max_tag", UINT, offsetof(struct p9_conf, uid) },
@@ -79,6 +79,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	memset(p9_conf, 0, sizeof(struct p9_conf));
 	p9_conf->trans_attr.server = -1;
 	p9_conf->trans_attr.disconnect_callback = p9_disconnect_cb;
+	p9_conf->trans_attr.max_send_sge = 2;
 	p9_conf->trans_attr.rq_depth = DEFAULT_RECV_NUM;
 	p9_conf->msize = DEFAULT_MSIZE;
 	p9_conf->max_fid = DEFAULT_MAX_FID;
@@ -169,6 +170,10 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 void p9_destroy(struct p9_handle **pp9_handle) {
 	struct p9_handle *p9_handle = *pp9_handle;
 	if (p9_handle) {
+		if (p9_handle->root_fid) {
+			p9p_clunk(p9_handle, p9_handle->root_fid);
+			p9_handle->root_fid = NULL;
+		}
 		if (p9_handle->fids_bitmap) {
 			free(p9_handle->fids_bitmap);
 			p9_handle->fids_bitmap = NULL;
@@ -190,12 +195,9 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 			p9_handle->wdata = NULL;
 		}
 		if (p9_handle->rdata) {
+			msk_dereg_mr(p9_handle->rdata[0].mr);
 			free(p9_handle->rdata);
 			p9_handle->rdata = NULL;
-		}
-		if (p9_handle->mr) {
-			msk_dereg_mr(p9_handle->mr);
-			p9_handle->mr = NULL;
 		}
 		if (p9_handle->rdmabuf) {
 			free(p9_handle->rdmabuf);
@@ -206,6 +208,7 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 
 int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 	struct p9_conf p9_conf;
+	struct ibv_mr *mr;
 	struct p9_handle *p9_handle;
 	int i, rc;
 
@@ -228,8 +231,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 	do {
 		strcpy(p9_handle->aname, p9_conf.aname);
 
-		/** @todo if (p9_conf.uname) p9_handle->uid = uidofuname(p9_conf.uname) */
-		p9_handle->debug = p9_conf.trans_attr.debug;
+		p9_handle->debug = p9_conf.debug;
 		p9_handle->uid = p9_conf.uid;
 		p9_handle->recv_num = p9_conf.trans_attr.rq_depth;
 		p9_handle->msize = p9_conf.msize;
@@ -261,8 +263,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			break;
 		}
 
-		p9_handle->mr = msk_reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
-		if (p9_handle->mr == NULL) {
+		mr = msk_reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
+		if (mr == NULL) {
 			ERROR_LOG("Could not register memory buffer");
 			rc = EIO;
 			break;
@@ -272,7 +274,9 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			p9_handle->rdata[i].data = p9_handle->rdmabuf + i * p9_conf.msize;
 			p9_handle->wdata[i].data = p9_handle->rdata[i].data + p9_handle->recv_num * p9_conf.msize;
 			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_conf.msize;
-			rc = msk_post_recv(p9_handle->trans, &p9_handle->rdata[i], p9_handle->mr, p9_recv_cb, p9_recv_err_cb, NULL);
+			p9_handle->rdata[i].mr = mr;
+			p9_handle->wdata[i].mr = mr;
+			rc = msk_post_recv(p9_handle->trans, &p9_handle->rdata[i], p9_recv_cb, p9_recv_err_cb, NULL);
 			if (rc) {
 				ERROR_LOG("Could not post recv buffer %i: %s (%d)", i, strerror(rc), rc);
 				rc = EIO;
@@ -286,8 +290,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->wdata_bitmap = malloc(p9_handle->recv_num/8 + (p9_handle->recv_num % 8 == 0 ? 0 : 1));
 		p9_handle->fids_bitmap = malloc(p9_handle->max_fid/8 + (p9_handle->max_fid % 8 == 0 ? 0 : 1));
 		p9_handle->tags_bitmap = malloc(p9_handle->max_tag/8 + (p9_handle->max_tag % 8 == 0 ? 0 : 1));
-		p9_handle->fids_bucket = bucket_init(p9_handle->max_tag/8, sizeof(struct p9_tag));
-		p9_handle->tags = malloc(p9_handle->max_fid * sizeof(struct p9_fid));
+		p9_handle->fids_bucket = bucket_init(p9_handle->max_fid/8, sizeof(struct p9_fid));
+		p9_handle->tags = malloc(p9_handle->max_tag * sizeof(struct p9_tag));
 		if (p9_handle->wdata_bitmap == NULL ||
 		    p9_handle->fids_bitmap == NULL || p9_handle->tags_bitmap == NULL ||
 		    p9_handle->fids_bucket == NULL || p9_handle->tags == NULL) {
@@ -298,7 +302,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		memset(p9_handle->wdata_bitmap, 0, p9_handle->recv_num/8 + (p9_handle->recv_num % 8 == 0 ? 0 : 1));
 		memset(p9_handle->fids_bitmap, 0, p9_handle->max_fid/8 + (p9_handle->max_fid % 8 == 0 ? 0 : 1));
 		memset(p9_handle->tags_bitmap, 0, p9_handle->max_tag/8 + (p9_handle->max_tag % 8 == 0 ? 0 : 1));
-		memset(p9_handle->tags, 0, p9_handle->max_fid * sizeof(struct p9_fid));
+		memset(p9_handle->tags, 0, p9_handle->max_tag * sizeof(struct p9_tag));
 
 		pthread_mutex_init(&p9_handle->wdata_lock, NULL);
 		pthread_cond_init(&p9_handle->wdata_cond, NULL);

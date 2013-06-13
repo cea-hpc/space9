@@ -58,7 +58,7 @@ struct msk_ctx {
 	} used;				/**< 0 if we can use it for a new recv/send */
 	uint32_t pos;			/**< current position inside our own buffer. 0 <= pos <= len */
 	struct rdmactx *next;		/**< next context */
-	msk_data_t *pdata;
+	msk_data_t *data;
 	ctx_callback_t callback;
 	ctx_callback_t err_callback;
 	union {
@@ -68,6 +68,14 @@ struct msk_ctx {
 	void *callback_arg;
 	struct ibv_sge sg_list[0]; 		/**< this is actually an array. note that when you malloc you have to add its size */
 };
+
+struct msk_tcp_trans {
+	int sockfd;
+	sockaddr_union_t peer_sa;
+	pthread_t cq_thrid;
+};
+
+#define tcpt(trans) ((struct msk_tcp_trans*)trans->cm_id)
 
 struct msk_internals {
 	pthread_mutex_t lock;
@@ -108,9 +116,103 @@ void __attribute__ ((destructor)) msk_internals_fini(void) {
 	}
 }
 
+/**
+ * msk_create_thread: Simple wrapper around pthread_create
+ */
+#define THREAD_STACK_SIZE 2116488
+static inline int msk_create_thread(pthread_t *thrid, void *(*start_routine)(void*), void *arg) {
 
-void *tcp_feeder_thread(void *arg) {
+	pthread_attr_t attr;
+	int ret;
+
+	/* Init for thread parameter (mostly for scheduling) */
+	if ((ret = pthread_attr_init(&attr)) != 0) {
+		ERROR_LOG("can't init pthread's attributes: %s (%d)", strerror(ret), ret);
+		return ret;
+	}
+
+	if ((ret = pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM)) != 0) {
+		ERROR_LOG("can't set pthread's scope: %s (%d)", strerror(ret), ret);
+		return ret;
+	}
+
+	if ((ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE)) != 0) {
+		ERROR_LOG("can't set pthread's join state: %s (%d)", strerror(ret), ret);
+		return ret;
+	}
+
+	if ((ret = pthread_attr_setstacksize(&attr, THREAD_STACK_SIZE)) != 0) {
+		ERROR_LOG("can't set pthread's stack size: %s (%d)", strerror(ret), ret);
+		return ret;
+	}
+
+	return pthread_create(thrid, &attr, start_routine, arg);
+}
+
+static void *msk_recv_thread(void *arg) {
+	msk_trans_t *trans = arg;
+	char *junk;
+	int rc, i;
+	msk_data_t *data;
+	msk_ctx_t *ctx;
+	uint32_t n, packet_size, read_size;
+
+	while (trans->state == MSK_CONNECTED) {
+		do {
+			for (i = 0, ctx = trans->recv_buf;
+			     i < trans->rq_depth;
+			     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
+				if (!ctx->used != MSK_CTX_FREE)
+					break;
+
+			if (i == trans->rq_depth) {
+				INFO_LOG(internals->debug, "Waiting for cond");
+				pthread_cond_wait(&trans->cm_cond, &trans->ctx_lock);
+			}
+
+		} while ( i == trans->rq_depth );
+
+		data = ctx->data;
+
+		data->size = 0;
+		n = read(tcpt(trans)->sockfd, data->data, 4);
+		packet_size = *((uint32_t*)data->data);
+		read_size = packet_size;
+		if (packet_size > data->max_size) {
+			ERROR_LOG("packet bigger than data maxsize? (resp. %u and %u)", packet_size, data->max_size);
+			read_size = data->max_size;
+		}
+
+		do {
+			n = read(tcpt(trans)->sockfd, data->data + data->size, read_size - data->size);
+			if (n == -1) {
+				rc = errno;
+				ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
+				break;
+			}
+			data->size += n;
+		} while(data->size < read_size);
+
+		if (packet_size > read_size) {
+			read_size = packet_size - read_size;
+			junk = malloc(1024);
+			while (read_size > 0) {
+				n = read(tcpt(trans)->sockfd, junk, (read_size > 1024 ? 1024 : read_size));
+				if (n == -1) {
+					rc = errno;
+					ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
+					break;
+				}
+				read_size -= n;
+			}
+		}
+
+		ctx->callback(trans, data, ctx->callback_arg);
+	}
 	pthread_exit(NULL);
+}
+
+void msk_destroy_trans(msk_trans_t **ptrans) {
 }
 
 int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
@@ -131,6 +233,12 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 
 	do {
 		memset(trans, 0, sizeof(msk_trans_t));
+
+		trans->cm_id = malloc(sizeof(struct msk_tcp_trans));
+		if (!trans->cm_id) {
+			ret = ENOMEM;
+			break;
+		}
 
 		trans->state = MSK_INIT;
 
@@ -172,14 +280,7 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 
 		pthread_mutex_lock(&internals->lock);
 		internals->debug = attr->debug;
-		internals->run_threads++;
 		pthread_mutex_unlock(&internals->lock);
-		//ret = msk_spawn_tcp_threads();
-
-		if (ret) {
-			ERROR_LOG("Could not start worker threads: %s (%d)", strerror(ret), ret);
-			break;
-		}
 	} while (0);
 
 	if (ret) {
@@ -194,18 +295,103 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 
 // server specific:
 int msk_bind_server(msk_trans_t *trans) {
-	return EIO;
+	int rc;
+
+	do {
+		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (tcpt(trans)->sockfd == -1) {
+			rc = errno;
+			ERROR_LOG("Socket creation failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+
+		rc = bind(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
+		if (rc) {
+			rc = errno;
+			ERROR_LOG("bind failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+
+		rc = listen(tcpt(trans)->sockfd, trans->server);
+		if (rc) {
+			rc = errno;
+			ERROR_LOG("listen failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+	} while (0);
+
+	return rc;
 }
+
+static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
+	msk_trans_t *trans = malloc(sizeof(msk_trans_t));
+	struct msk_tcp_trans *tcpt = malloc(sizeof(struct msk_tcp_trans));
+	int ret;
+
+	if (!trans || !tcpt) {
+		ERROR_LOG("malloc failed");
+		return NULL;
+	}
+
+	memcpy(trans, listening_trans, sizeof(msk_trans_t));
+
+	trans->cm_id = (void*)tcpt;
+	trans->state = MSK_CONNECT_REQUEST;
+
+	memset(&trans->cm_lock, 0, sizeof(pthread_mutex_t));
+	memset(&trans->cm_cond, 0, sizeof(pthread_cond_t));
+	memset(&trans->ctx_lock, 0, sizeof(pthread_mutex_t));
+	memset(&trans->ctx_cond, 0, sizeof(pthread_cond_t));
+
+	ret = pthread_mutex_init(&trans->cm_lock, NULL);
+	if (ret) {
+		ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+		msk_destroy_trans(&trans);
+		return NULL;
+	}
+	ret = pthread_cond_init(&trans->cm_cond, NULL);
+	if (ret) {
+		ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
+		msk_destroy_trans(&trans);
+		return NULL;
+	}
+	ret = pthread_mutex_init(&trans->ctx_lock, NULL);
+	if (ret) {
+		ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+		msk_destroy_trans(&trans);
+		return NULL;
+	}
+	ret = pthread_cond_init(&trans->ctx_cond, NULL);
+	if (ret) {
+		ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
+		msk_destroy_trans(&trans);
+		return NULL;
+	}
+
+	return trans;
+}
+
 msk_trans_t *msk_accept_one_wait(msk_trans_t *trans, int msleep) {
-	return NULL;
+	msk_trans_t *child_trans;
+	socklen_t len = sizeof(sockaddr_union_t);
+
+	child_trans = clone_trans(trans);
+
+	tcpt(child_trans)->sockfd = accept(tcpt(trans)->sockfd, &tcpt(child_trans)->peer_sa.sa, &len);
+
+	if (tcpt(child_trans)->sockfd == -1) {
+		msk_destroy_trans(&child_trans);
+		return NULL;
+	}
+
+	return child_trans;
 }
 msk_trans_t *msk_accept_one_timedwait(msk_trans_t *trans, struct timespec *abstime) {
-	return NULL;
+	return msk_accept_one_wait(trans, 0);
 }
+
 int msk_finalize_accept(msk_trans_t *trans) {
-	return EIO;
-}
-void msk_destroy_trans(msk_trans_t **ptrans) {
+	return msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
 }
 
 int msk_connect(msk_trans_t *trans) {

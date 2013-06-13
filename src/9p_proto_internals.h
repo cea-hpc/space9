@@ -267,9 +267,10 @@ do {                                                         \
  * Calculate message size, and write this value in the
  * header of the 9p message.
  */
-#define p9_setmsglen( __cursor, __start )                   \
-do {                                                        \
-  *((uint32_t *)__start) =  (uint32_t)(__cursor - __start); \
+#define p9_setmsglen( __cursor, __data )                              \
+do {                                                                  \
+  *((uint32_t *)__data->data) =  (uint32_t)(__cursor - __data->data); \
+  __data->size = *((uint32_t *)__data->data);                         \
 } while( 0 )
 
 

@@ -15,6 +15,9 @@ endif
 bin_PROGRAMS = 9p_shell
 9p_shell_SOURCES = 9p_shell.c 9p_shell_functions.c
 9p_shell_LDADD = lib9p.la
+if ENABLE_READLINE
+9p_shell_LDADD += -lreadline -lhistory
+endif
 
 
 pkgconfigdir=$(libdir)/pkgconfig

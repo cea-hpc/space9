@@ -23,6 +23,7 @@ static inline void strmove(char *dest, const char *src, size_t n) {
  * @return length of new path if >= 0, -errno on error
  */
 int path_canonicalizer(char *path) {
+
 	char *cur, *new, *slash;
 	size_t n;
 
@@ -43,7 +44,7 @@ int path_canonicalizer(char *path) {
 			if (cur[1] == '/') {
 				/* foo/./bar -> foo/bar */
 				cur += 2;
-			} else if (cur[1] == '.' && cur[2] == '/') {
+			} else if (cur[1] == '.' && (cur[2] == '/' || cur[2] == '\0')) {
 				/* ../, need to check what we have so far */
 				n = 3;
 				if (new == path) {
@@ -92,8 +93,8 @@ int path_canonicalizer(char *path) {
 			/* ... or .foo or whatever that isn't special */
 			slash = strchr(cur, '/');
 			if (slash == NULL) {
-				/* trail of path, also copy final \0 */
-				n = strlen(cur) + 1;
+				/* trail of path, without final \0 */
+				n = strlen(cur);
 			} else {
 				/* copy up to slash included */
 				n = slash - cur + 1;
@@ -104,6 +105,7 @@ int path_canonicalizer(char *path) {
 		}
 	}
 	new[0] = '\0';
+
 	return (int)(new - path);
 }
 

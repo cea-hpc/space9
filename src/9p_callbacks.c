@@ -40,7 +40,7 @@ void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 	struct p9_handle *p9_handle = trans->private_data;
 	uint32_t wdata_i = data - p9_handle->wdata;
 
-	printf("wdata_i: %i\n", wdata_i);
+	data->next = NULL;
 
 	pthread_mutex_lock(&p9_handle->wdata_lock);
 	clear_bit(p9_handle->wdata_bitmap, wdata_i);
