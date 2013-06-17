@@ -286,6 +286,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		if (rc)
 			break;
 
+		p9_handle->credits = p9_handle->recv_num;
+
 		 /* bitmaps, divide by /8 (=/64*8)*/
 		p9_handle->wdata_bitmap = malloc(p9_handle->recv_num/8 + (p9_handle->recv_num % 8 == 0 ? 0 : 1));
 		p9_handle->fids_bitmap = malloc(p9_handle->max_fid/8 + (p9_handle->max_fid % 8 == 0 ? 0 : 1));
@@ -312,6 +314,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		pthread_cond_init(&p9_handle->tag_cond, NULL);
 		pthread_mutex_init(&p9_handle->fid_lock, NULL);
 		pthread_cond_init(&p9_handle->fid_cond, NULL);
+		pthread_mutex_init(&p9_handle->credit_lock, NULL);
+		pthread_cond_init(&p9_handle->credit_cond, NULL);
 
 		rc = msk_finalize_connect(p9_handle->trans);
 		if (rc)

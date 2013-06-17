@@ -327,25 +327,36 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
 
 /** p9_xattrwalk
  *
+ * Allocate a new fid to read the content of xattr name from fid
+ * if name is NULL or empty, content will be the list of xattrs
  *
  * size[4] Txattrwalk tag[2] fid[4] newfid[4] name[s]
  * size[4] Rxattrwalk tag[2] size[8]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    fid:		fid to clone
+ * @param [OUT]   newfid:	newfid where xattr will be readable
+ * @param [IN]    name:		name of xattr to read, or NULL for the list
+ * @param [OUT]	  psize:	size available for reading
  * @return 0 on success, errno value on error.
  */
+int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid **pnewfid, char *name, uint64_t *psize);
 
 /** p9_xattrcreate
  *
+ * Replace fid with one where xattr content will be writable
  *
  * size[4] Txattrcreate tag[2] fid[4] name[s] attr_size[8] flags[4]
  * size[4] Rxattrcreate tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    name:		name of xattr to create
+ * @param [IN]    size:		size of the xattr that will be written
+ * @param [IN]    flags:	flags (derifed from linux setxattr flags: XATTR_CREATE, XATTR_REPLACE)
  * @return 0 on success, errno value on error.
  */
+int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint64_t size, uint32_t flags);
 
 /** p9_readdir
  *
@@ -426,30 +437,35 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *offse
 int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t gid,
                struct p9_qid *qid);
 
-
 /** p9_renameat
  *
+ * renameat is preferred over rename
  *
  * size[4] Trenameat tag[2] olddirfid[4] oldname[s] newdirfid[4] newname[s]
  * size[4] Rrenameat tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    dfid:		fid of the directory where file currently is
+ * @param [IN]    name:		current filename
+ * @param [IN]    newdfid:	fid of the directory to move into
+ * @param [IN]    newname:	new filename
  * @return 0 on success, errno value on error.
  */
+int p9p_renameat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, struct p9_fid *newdfid, char *newname);
 
 /** p9_unlinkat
  *
+ * unlink file by name
  *
- * size[4] Tunlinkat tag[2] dirfd[4] name[s] flags[4]
+ * size[4] Tunlinkat tag[2] dirfid[4] name[s] flags[4]
  * size[4] Runlinkat tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    dfid:		fid of the directory where file currently is
+ * @param [IN]    name:		name of file to unlink
+ * @param [IN]    flags:	unlink flags, unused by server?
  * @return 0 on success, errno value on error.
  */
-
-
-
+int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t flags);
 
 #endif

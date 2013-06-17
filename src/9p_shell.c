@@ -1,5 +1,3 @@
-
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -44,6 +42,9 @@ static struct functions functions[] = {
 	{ "cat", "cat <file>: cat files...", p9s_cat },
 	{ "xwrite", "xwrite <file> <content>: writes content into file (truncates)", p9s_xwrite },
 	{ "mkdir", "mkdir <dir>: creates directory", p9s_mkdir },
+	{ "rm", "rm <file>: removes file, only in current directory atm", p9s_rm },
+	{ "mv", "mv <from> <to>: moves from to to, only cwd/no slash allowed atm", p9s_mv },
+	{ "rmdir", "soon", p9s_mkdir },
 	{ NULL, NULL, NULL }
 };
 

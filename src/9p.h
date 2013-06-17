@@ -109,6 +109,9 @@ struct p9_handle {
 	pthread_cond_t tag_cond;
 	pthread_mutex_t fid_lock;
 	pthread_cond_t fid_cond;
+	pthread_mutex_t credit_lock;
+	pthread_cond_t credit_cond;
+	uint32_t credits;
 	bitmap_t *wdata_bitmap;
 	bitmap_t *tags_bitmap;
 	struct p9_tag *tags;

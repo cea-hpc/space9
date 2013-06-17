@@ -193,7 +193,7 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 			printf("walk failed to duplicate fid %u (%s), error: %s (%d)\n", ctx->cwd->fid, ctx->cwd->path, strerror(rc), rc);
 			return EIO;
 		}
-		rc = p9p_lcreate(ctx->p9_handle, ctx->cwd, filename, O_WRONLY, 0640, getegid(), NULL);
+		rc = p9p_lcreate(ctx->p9_handle, fid, filename, O_WRONLY, 0640, getegid(), NULL);
 		if (rc) {
 			printf("lcreate failed on dir %s, filename %s, error: %s (%d)\n", ctx->cwd->path, filename, strerror(rc), rc);
 			return EIO;
@@ -230,3 +230,35 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 	}	
 	return rc;
 }
+
+int p9s_rm(struct current_context *ctx, char *arg) {
+	int rc;
+
+	rc = p9p_unlinkat(ctx->p9_handle, ctx->cwd, arg, 0);
+	if (rc) {
+		printf("unlinkat failed on dir fid %u (%s), name %s, error: %s (%d)\n", ctx->cwd->fid, ctx->cwd->path, arg, strerror(rc), rc);
+	}
+
+	return rc;
+}
+int p9s_mv(struct current_context *ctx, char *arg) {
+	int rc;
+	char *dest;
+
+	dest = strchr(arg, ' ');
+	if (!dest) {
+		printf("no dest?");
+		return EINVAL;
+	}
+
+	dest[0]='\0';
+	dest++;
+
+	rc = p9p_renameat(ctx->p9_handle, ctx->cwd, arg, ctx->cwd, dest);
+	if (rc) {
+		printf("renameat failed on dir fid %u (%s), name %s to name %s, error: %s (%d)\n", ctx->cwd->fid, ctx->cwd->path, arg, dest, strerror(rc), rc);
+	}
+
+	return rc;
+}
+

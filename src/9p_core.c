@@ -24,9 +24,19 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	uint32_t wdata_i, tag;
 
 	pthread_mutex_lock(&p9_handle->wdata_lock);
-	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num)
+	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num) {
+		INFO_LOG(p9_handle->debug, "waiting for wdata to free up (sendrequest's acknowledge callback)");
 		pthread_cond_wait(&p9_handle->wdata_cond, &p9_handle->wdata_lock);
+	}
 	pthread_mutex_unlock(&p9_handle->wdata_lock);
+
+	pthread_mutex_lock(&p9_handle->credit_lock);
+	while (p9_handle->credits == 0) {
+		INFO_LOG(p9_handle->debug, "waiting for credit (putreply)");
+		pthread_cond_wait(&p9_handle->credit_cond, &p9_handle->credit_lock);
+	}
+	p9_handle->credits--;
+	pthread_mutex_unlock(&p9_handle->credit_lock);
 
 	data = &p9_handle->wdata[wdata_i];
 	*pdata = data;
@@ -106,6 +116,11 @@ int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data) {
 	if (rc) {
 		ERROR_LOG("Could not post recv buffer %p: %s (%d)", data, strerror(rc), rc);
 		rc = EIO;
+	} else {
+		pthread_mutex_lock(&p9_handle->credit_lock);
+		p9_handle->credits++;
+		pthread_cond_broadcast(&p9_handle->credit_cond);
+		pthread_mutex_unlock(&p9_handle->credit_lock);
 	}
 
 	return rc;

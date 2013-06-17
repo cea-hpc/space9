@@ -14,5 +14,7 @@ int p9s_cat(struct current_context *ctx, char *arg);
 int p9s_mkdir(struct current_context *ctx, char *arg);
 int p9s_pwd(struct current_context *ctx, char *arg);
 int p9s_xwrite(struct current_context *ctx, char *arg);
+int p9s_rm(struct current_context *ctx, char *arg);
+int p9s_mv(struct current_context *ctx, char *arg);
 
 #endif

@@ -57,6 +57,7 @@ struct msk_ctx {
 		MSK_CTX_PROCESSING
 	} used;				/**< 0 if we can use it for a new recv/send */
 	uint32_t pos;			/**< current position inside our own buffer. 0 <= pos <= len */
+	int num_sge;
 	struct rdmactx *next;		/**< next context */
 	msk_data_t *data;
 	ctx_callback_t callback;
@@ -73,6 +74,7 @@ struct msk_tcp_trans {
 	int sockfd;
 	sockaddr_union_t peer_sa;
 	pthread_t cq_thrid;
+	pthread_mutex_t lock;
 };
 
 #define tcpt(trans) ((struct msk_tcp_trans*)trans->cm_id)
@@ -158,11 +160,12 @@ static void *msk_recv_thread(void *arg) {
 	uint32_t n, packet_size, read_size;
 
 	while (trans->state == MSK_CONNECTED) {
+		pthread_mutex_lock(&trans->ctx_lock);
 		do {
 			for (i = 0, ctx = trans->recv_buf;
 			     i < trans->rq_depth;
 			     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
-				if (!ctx->used != MSK_CTX_FREE)
+				if (!ctx->used != MSK_CTX_PENDING)
 					break;
 
 			if (i == trans->rq_depth) {
@@ -171,11 +174,16 @@ static void *msk_recv_thread(void *arg) {
 			}
 
 		} while ( i == trans->rq_depth );
+		ctx->used = MSK_CTX_PROCESSING;
+		pthread_mutex_unlock(&trans->ctx_lock);
 
 		data = ctx->data;
 
 		data->size = 0;
-		n = read(tcpt(trans)->sockfd, data->data, 4);
+		while (data->size < 4) {
+			n = read(tcpt(trans)->sockfd, data->data, 4 - data->size);
+			data->size += n;
+		}
 		packet_size = *((uint32_t*)data->data);
 		read_size = packet_size;
 		if (packet_size > data->max_size) {
@@ -208,11 +216,24 @@ static void *msk_recv_thread(void *arg) {
 		}
 
 		ctx->callback(trans, data, ctx->callback_arg);
+
+		pthread_mutex_lock(&trans->ctx_lock);
+		ctx->used = MSK_CTX_FREE;
+		pthread_cond_broadcast(&trans->ctx_cond);
+		pthread_mutex_unlock(&trans->ctx_lock);
 	}
 	pthread_exit(NULL);
 }
 
 void msk_destroy_trans(msk_trans_t **ptrans) {
+}
+
+int msk_setup_buffers(msk_trans_t *trans) {
+	trans->recv_buf = malloc(trans->rq_depth * sizeof(struct msk_ctx));
+	if (trans->recv_buf == NULL)
+		return ENOMEM;
+
+	return 0;
 }
 
 int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
@@ -234,8 +255,8 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 	do {
 		memset(trans, 0, sizeof(msk_trans_t));
 
-		trans->cm_id = malloc(sizeof(struct msk_tcp_trans));
-		if (!trans->cm_id) {
+		trans->cm_id /* tcpt(trans) */ = malloc(sizeof(struct msk_tcp_trans));
+		if (!tcpt(trans)) {
 			ret = ENOMEM;
 			break;
 		}
@@ -275,6 +296,12 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 		ret = pthread_cond_init(&trans->ctx_cond, NULL);
 		if (ret) {
 			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
+			break;
+		}
+
+		ret = pthread_mutex_init(&tcpt(trans)->lock, NULL);
+		if (ret) {
+			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 
@@ -326,7 +353,7 @@ int msk_bind_server(msk_trans_t *trans) {
 static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	msk_trans_t *trans = malloc(sizeof(msk_trans_t));
 	struct msk_tcp_trans *tcpt = malloc(sizeof(struct msk_tcp_trans));
-	int ret;
+	int rc;
 
 	if (!trans || !tcpt) {
 		ERROR_LOG("malloc failed");
@@ -343,29 +370,37 @@ static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	memset(&trans->ctx_lock, 0, sizeof(pthread_mutex_t));
 	memset(&trans->ctx_cond, 0, sizeof(pthread_cond_t));
 
-	ret = pthread_mutex_init(&trans->cm_lock, NULL);
-	if (ret) {
-		ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+	do {
+		rc = msk_setup_buffers(trans);
+		if (rc) {
+			ERROR_LOG("Couldn't setup buffers");
+			break;
+		}
+		rc = pthread_mutex_init(&trans->cm_lock, NULL);
+		if (rc) {
+			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+		rc = pthread_cond_init(&trans->cm_cond, NULL);
+			if (rc) {
+			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+		rc = pthread_mutex_init(&trans->ctx_lock, NULL);
+		if (rc) {
+			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+		rc = pthread_cond_init(&trans->ctx_cond, NULL);
+		if (rc) {
+			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+	} while (0);
+
+	if (rc) {
 		msk_destroy_trans(&trans);
-		return NULL;
-	}
-	ret = pthread_cond_init(&trans->cm_cond, NULL);
-	if (ret) {
-		ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
-		msk_destroy_trans(&trans);
-		return NULL;
-	}
-	ret = pthread_mutex_init(&trans->ctx_lock, NULL);
-	if (ret) {
-		ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
-		msk_destroy_trans(&trans);
-		return NULL;
-	}
-	ret = pthread_cond_init(&trans->ctx_cond, NULL);
-	if (ret) {
-		ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
-		msk_destroy_trans(&trans);
-		return NULL;
+		trans = NULL;
 	}
 
 	return trans;
@@ -377,12 +412,17 @@ msk_trans_t *msk_accept_one_wait(msk_trans_t *trans, int msleep) {
 
 	child_trans = clone_trans(trans);
 
+	if (!child_trans)
+		return NULL;
+
 	tcpt(child_trans)->sockfd = accept(tcpt(trans)->sockfd, &tcpt(child_trans)->peer_sa.sa, &len);
 
 	if (tcpt(child_trans)->sockfd == -1) {
 		msk_destroy_trans(&child_trans);
 		return NULL;
 	}
+
+	child_trans->state = MSK_CONNECT_REQUEST;
 
 	return child_trans;
 }
@@ -391,21 +431,64 @@ msk_trans_t *msk_accept_one_timedwait(msk_trans_t *trans, struct timespec *absti
 }
 
 int msk_finalize_accept(msk_trans_t *trans) {
-	return msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
+	int rc;
+
+	if (trans->state != MSK_CONNECT_REQUEST)
+		return EINVAL;
+
+	rc = msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
+	if (!rc)
+		trans->state = MSK_CONNECTED;
+
+	return rc;
 }
 
 int msk_connect(msk_trans_t *trans) {
-	return EIO;
+	int rc;
+	do {
+		rc = msk_setup_buffers(trans);
+		if (rc) {
+			ERROR_LOG("Couldn't setup buffers");
+			break;
+		}
+		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (tcpt(trans)->sockfd == -1) {
+			rc = errno;
+			ERROR_LOG("Socket creation failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+
+		rc = connect(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
+		if (rc) {
+			rc = errno;
+			ERROR_LOG("Connect failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+	} while (0);
+
+	if (!rc)
+		trans->state = MSK_CONNECT_REQUEST;
+
+	return rc;
 }
 int msk_finalize_connect(msk_trans_t *trans) {
-	return EIO;
+	int rc;
+
+	if (trans->state != MSK_CONNECT_REQUEST)
+		return EINVAL;
+
+	rc = msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
+	if (!rc)
+		trans->state = MSK_CONNECTED;
+
+	return rc;
 }
 
 
 /* utility functions */
 
 struct ibv_mr *msk_reg_mr(msk_trans_t *trans, void *memaddr, size_t size, int access) {
-	return NULL;
+	return memaddr;
 }
 int msk_dereg_mr(struct ibv_mr *mr) {
 	return 0;
@@ -415,29 +498,88 @@ msk_rloc_t *msk_make_rloc(struct ibv_mr *mr, uint64_t addr, uint32_t size) {
 	return NULL;
 }
 
+int msk_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+	struct msk_ctx *ctx;
+	int i;
 
-int msk_post_n_recv(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+       	pthread_mutex_lock(&trans->ctx_lock);
+	do {
+		for (i = 0, ctx = trans->recv_buf;
+		     i < trans->rq_depth;
+		     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
+			if (!ctx->used != MSK_CTX_FREE)
+				break;
+
+		if (i == trans->rq_depth) {
+			INFO_LOG(internals->debug, "Waiting for cond");
+			pthread_cond_wait(&trans->cm_cond, &trans->ctx_lock);
+		}
+
+	} while ( i == trans->rq_depth );
+	ctx->data = data;
+	ctx->num_sge = num_sge;
+	ctx->callback = callback;
+	ctx->err_callback = err_callback;
+	ctx->callback_arg = callback_arg;
+	ctx->used = MSK_CTX_PENDING;
+	pthread_mutex_unlock(&trans->ctx_lock);
+
+	return 0;
+}
+
+int msk_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+	int rc, i;
+	uint32_t cur;
+	msk_data_t *data = data_arg;
+	pthread_mutex_lock(&tcpt(trans)->lock);
+
+	rc = 0;
+	for (i=0; i < num_sge; i++) {
+		if (!data) {
+			rc = EINVAL;
+			break;
+		}
+		cur = 0;
+		while (rc == 0 && cur < data->size) {
+			rc = write(tcpt(trans)->sockfd, data->data, data->size - cur);
+			if (rc < 0) {
+				rc = errno;
+				ERROR_LOG("write failed: %s (%d)", strerror(rc), rc);
+			} else {
+				cur += rc;
+				rc = 0;
+			}
+		}
+
+		if (rc)
+			break;
+		data = data->next;
+	}
+	pthread_mutex_unlock(&tcpt(trans)->lock);
+
+	if (rc)
+		err_callback(trans, data_arg, callback_arg);
+	else
+		callback(trans, data_arg, callback_arg);
+
+	return rc;
+}
+int msk_wait_n_recv(msk_trans_t *trans, msk_data_t *pdata, int num_sge) {
 	return EIO;
 }
-int msk_post_n_send(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+int msk_wait_n_send(msk_trans_t *trans, msk_data_t *pdata, int num_sge) {
 	return EIO;
 }
-int msk_wait_n_recv(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr) {
+int msk_post_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
 	return EIO;
 }
-int msk_wait_n_send(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr) {
+int msk_post_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
 	return EIO;
 }
-int msk_post_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
+int msk_wait_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc) {
 	return EIO;
 }
-int msk_post_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
-	return EIO;
-}
-int msk_wait_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, msk_rloc_t *rloc) {
-	return EIO;
-}
-int msk_wait_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, struct ibv_mr *mr, msk_rloc_t *rloc) {
+int msk_wait_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc) {
 	return EIO;
 }
 

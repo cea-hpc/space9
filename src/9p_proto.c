@@ -191,7 +191,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 	struct p9_fid *newfid;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL)
+	if (p9_handle == NULL || fid == NULL || pnewfid == NULL)
 		return EINVAL;
 
 	tag = 0;
@@ -273,6 +273,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TWALK, tag);
+			p9c_putfid(p9_handle, newfid);
 			rc = EIO;
 	}
 
@@ -459,6 +460,8 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_setvalue(cursor, mode, uint32_t);
 	p9_setvalue(cursor, gid, uint32_t);
 	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "lcreate from fid %u (%s) to name %s, flag %u, mode %u", fid->fid, fid->path, name, flags, mode);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1104,6 +1107,7 @@ int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset,
 	p9_setvalue(cursor, offset, uint64_t);
 	p9_setvalue(cursor, data->size, uint32_t);
 	p9_setmsglen(cursor, header_data);
+	*((uint32_t*)header_data->data) = header_data->size + data->size;
 
 	header_data->next = data;
 
@@ -1208,6 +1212,289 @@ int p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TWRITE, tag);
 			rc = -EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/** p9_xattrwalk
+ *
+ * Allocate a new fid to read the content of xattr name from fid
+ * if name is NULL or empty, content will be the list of xattrs
+ *
+ * size[4] Txattrwalk tag[2] fid[4] newfid[4] name[s]
+ * size[4] Rxattrwalk tag[2] size[8]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to clone
+ * @param [OUT]   newfid:	newfid where xattr will be readable
+ * @param [IN]    name:		name of xattr to read, or NULL for the list
+ * @param [OUT]	  psize:	size available for reading
+ * @return 0 on success, errno value on error.
+ */
+int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid **pnewfid, char *name, uint64_t *psize) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+	struct p9_fid *newfid;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || pnewfid == NULL || psize == NULL)
+		return EINVAL;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	rc = p9c_getfid(p9_handle, &newfid);
+	// FIXME: free buffer
+	if (rc)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TXATTRWALK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, newfid->fid, uint32_t);
+	if (name)
+		p9_setstr(cursor, strnlen(name, MAXPATHLEN), name);
+	else
+		p9_setstr(cursor, 0, "");
+
+	p9_setmsglen(cursor, data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RXATTRWALK:
+			p9_getvalue(cursor, *psize, uint64_t);
+			*pnewfid = newfid;
+			break;
+
+		case P9_RERROR:
+			p9c_putfid(p9_handle, newfid);
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TXATTRWALK, tag);
+			p9c_putfid(p9_handle, newfid);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/** p9_xattrcreate
+ *
+ * Replace fid with one where xattr content will be writable
+ *
+ * size[4] Txattrcreate tag[2] fid[4] name[s] attr_size[8] flags[4]
+ * size[4] Rxattrcreate tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    name:		name of xattr to create
+ * @param [IN]    size:		size of the xattr that will be written
+ * @param [IN]    flags:	flags (derifed from linux setxattr flags: XATTR_CREATE, XATTR_REPLACE)
+ * @return 0 on success, errno value on error.
+ */
+int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint64_t size, uint32_t flags) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || name == NULL || fid == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TXATTRCREATE, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setstr(cursor, strlen(name), name);
+	p9_setvalue(cursor, size, uint64_t);
+	p9_setvalue(cursor, flags, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RXATTRCREATE:
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TXATTRCREATE, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+
+
+/** p9_renameat
+ *
+ * renameat is preferred over rename
+ *
+ * size[4] Trenameat tag[2] olddirfid[4] oldname[s] newdirfid[4] newname[s]
+ * size[4] Rrenameat tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    dfid:		fid of the directory where file currently is
+ * @param [IN]    name:		current filename
+ * @param [IN]    newdfid:	fid of the directory to move into
+ * @param [IN]    newname:	new filename
+ * @return 0 on success, errno value on error.
+ */
+int p9p_renameat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, struct p9_fid *newdfid, char *newname) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || dfid == NULL || name == NULL || newdfid == NULL || newname == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TRENAMEAT, tag);
+	p9_setvalue(cursor, dfid->fid, uint32_t);
+	p9_setstr(cursor, strlen(name), name);
+	p9_setvalue(cursor, newdfid->fid, uint32_t);
+	p9_setstr(cursor, strlen(newname), newname);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "renameat on dfid %u (%s) name %s to dfid %u (%s) name %s", dfid->fid, dfid->path, name, newdfid->fid, newdfid->path, newname);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RRENAMEAT:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TRENAMEAT, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/** p9_unlinkat
+ *
+ * unlink file by name
+ *
+ * size[4] Tunlinkat tag[2] dirfid[4] name[s] flags[4]
+ * size[4] Runlinkat tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    dfid:		fid of the directory where file currently is
+ * @param [IN]    name:		name of file to unlink
+ * @param [IN]    flags:	unlink flags, unused by server?
+ * @return 0 on success, errno value on error.
+ */
+int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t flags) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || dfid == NULL || name == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TUNLINKAT, tag);
+	p9_setvalue(cursor, dfid->fid, uint32_t);
+	p9_setstr(cursor, strlen(name), name);
+	p9_setvalue(cursor, flags, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "unlinkat on dfid %u (%s) name %s", dfid->fid, dfid->path, name);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RUNLINKAT:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TUNLINKAT, tag);
+			rc = EIO;
 	}
 
 	p9c_putreply(p9_handle, data);
