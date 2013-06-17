@@ -170,7 +170,7 @@ static void *msk_recv_thread(void *arg) {
 
 			if (i == trans->rq_depth) {
 				INFO_LOG(internals->debug, "Waiting for cond");
-				pthread_cond_wait(&trans->cm_cond, &trans->ctx_lock);
+				pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 			}
 
 		} while ( i == trans->rq_depth );
@@ -181,7 +181,7 @@ static void *msk_recv_thread(void *arg) {
 
 		data->size = 0;
 		while (data->size < 4) {
-			n = read(tcpt(trans)->sockfd, data->data, 4 - data->size);
+			n = read(tcpt(trans)->sockfd, data->data + data->size, 4 - data->size);
 			data->size += n;
 		}
 		packet_size = *((uint32_t*)data->data);
@@ -193,7 +193,9 @@ static void *msk_recv_thread(void *arg) {
 
 		do {
 			n = read(tcpt(trans)->sockfd, data->data + data->size, read_size - data->size);
-			if (n == -1) {
+			if (n < 0 && errno == EINTR) {
+				continue;
+			} else if (n < 0) {
 				rc = errno;
 				ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
 				break;
@@ -202,11 +204,14 @@ static void *msk_recv_thread(void *arg) {
 		} while(data->size < read_size);
 
 		if (packet_size > read_size) {
+			ERROR_LOG("packet too big for buffer, throwing %u bytes out", packet_size - read_size);
 			read_size = packet_size - read_size;
 			junk = malloc(1024);
 			while (read_size > 0) {
 				n = read(tcpt(trans)->sockfd, junk, (read_size > 1024 ? 1024 : read_size));
-				if (n == -1) {
+				if (n < 0 && errno == EINTR) {
+					continue;
+				} else if (n < 0) {
 					rc = errno;
 					ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
 					break;
@@ -512,7 +517,7 @@ int msk_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callb
 
 		if (i == trans->rq_depth) {
 			INFO_LOG(internals->debug, "Waiting for cond");
-			pthread_cond_wait(&trans->cm_cond, &trans->ctx_lock);
+			pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 		}
 
 	} while ( i == trans->rq_depth );
@@ -522,6 +527,7 @@ int msk_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callb
 	ctx->err_callback = err_callback;
 	ctx->callback_arg = callback_arg;
 	ctx->used = MSK_CTX_PENDING;
+	pthread_cond_broadcast(&trans->ctx_cond);
 	pthread_mutex_unlock(&trans->ctx_lock);
 
 	return 0;
@@ -542,7 +548,9 @@ int msk_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, ctx_c
 		cur = 0;
 		while (rc == 0 && cur < data->size) {
 			rc = write(tcpt(trans)->sockfd, data->data, data->size - cur);
-			if (rc < 0) {
+			if (rc < 0 && errno == EINTR) {
+				continue;
+			} else if (rc < 0) {
 				rc = errno;
 				ERROR_LOG("write failed: %s (%d)", strerror(rc), rc);
 			} else {

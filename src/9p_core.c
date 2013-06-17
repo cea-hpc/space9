@@ -54,6 +54,7 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	}
 	pthread_mutex_unlock(&p9_handle->tag_lock);
 
+
 	p9_handle->tags[tag].rdata = NULL;
 
 	*ptag = (uint16_t)tag;
@@ -96,8 +97,11 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
 	pthread_mutex_unlock(&p9_handle->recv_lock);
 
 	*pdata = p9_handle->tags[tag].rdata;
+	pthread_mutex_lock(&p9_handle->tag_lock);
 	if (tag != P9_NOTAG)
 		clear_bit(p9_handle->tags_bitmap, tag);
+	pthread_cond_broadcast(&p9_handle->tag_cond);
+	pthread_mutex_unlock(&p9_handle->tag_lock);
 
 	return 0;
 }
@@ -138,7 +142,7 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	uint32_t fid_i;
 
 	pthread_mutex_lock(&p9_handle->fid_lock);
-	while ((fid_i = get_and_set_first_bit(p9_handle->fids_bitmap, p9_handle->recv_num)) == p9_handle->recv_num)
+	while ((fid_i = get_and_set_first_bit(p9_handle->fids_bitmap, p9_handle->max_fid)) == p9_handle->max_fid)
 		pthread_cond_wait(&p9_handle->fid_cond, &p9_handle->fid_lock);
 	pthread_mutex_unlock(&p9_handle->fid_lock);
 

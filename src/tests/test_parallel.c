@@ -14,11 +14,114 @@
 #include "utils.h"
 #include "settings.h"
 
-static void *walkthr
+#include "bucket.h"
+
+#define THRNUM 10
+#define STARTPOINT "sigmund"
+
+struct nlist {
+	char name[MAXNAMLEN];
+	struct p9_fid *pfid;
+	struct nlist *next;
+};
+
+struct cb_arg {
+	int debug;
+	bucket_t *buck;
+	struct nlist *tail;
+};
+
+static int rd_cb(void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
+	struct cb_arg *cb_arg = arg;
+	struct nlist *n;
+
+	/* skip . and .. */
+	if (strncmp(name, ".", namelen) == 0 || strncmp(name, "..", namelen) == 0)
+		return 0;
+
+	if (cb_arg->debug)
+		printf("%*s\n", namelen, name);
+
+	if (qid->type == P9_QTDIR) {
+		n = bucket_get(cb_arg->buck);
+		if (n == NULL)
+			return ENOMEM;
+
+		strncpy(n->name, name, MIN(MAXNAMLEN, namelen));
+		if (namelen < MAXNAMLEN) {
+			n->name[namelen] = '\0';
+		} else {
+			n->name[MAXNAMLEN-1] = '\0';
+		}
+		n->pfid = dfid;
+
+		n->next = cb_arg->tail;
+		cb_arg->tail = n;
+	}
+
+	return 0;
+}
+
+static void *walkthr(void* arg) {
+	struct p9_handle *p9_handle = arg;
+	struct p9_fid *fid;
+	int rc;
+	uint64_t offset;
+	bucket_t *buck;
+	struct cb_arg cb_arg;
+	struct nlist *nlist;
+
+	buck = bucket_init(100, sizeof(struct nlist));
+	cb_arg.buck = buck;
+	cb_arg.debug = p9_handle->debug;
+	cb_arg.tail = bucket_get(buck);
+	strncpy(cb_arg.tail->name, STARTPOINT, MAXNAMLEN);
+	cb_arg.tail->next = NULL;
+	cb_arg.tail->pfid = p9_handle->root_fid;
+
+	rc = 0;
+	fid = cb_arg.tail->pfid;
+
+	while (rc == 0 && cb_arg.tail != NULL) {
+		if (cb_arg.tail->name[0] == '\0') {
+			p9p_clunk(p9_handle, cb_arg.tail->pfid);
+			nlist = cb_arg.tail;
+			cb_arg.tail = cb_arg.tail->next;
+			bucket_put(buck, nlist);
+			continue;
+		}
+
+		rc = p9p_walk(p9_handle, cb_arg.tail->pfid, cb_arg.tail->name, &fid);
+		if (rc) {
+			printf("walk failed, rc: %s (%d)\n", strerror(rc), rc);
+			break;
+		}
+
+		cb_arg.tail->name[0] = '\0';
+		cb_arg.tail->pfid = fid;
+
+		offset = 0LL;
+		do {
+			rc = p9p_readdir(p9_handle, fid, &offset, rd_cb, &cb_arg);
+		} while (rc > 0);
+
+		if (rc) {
+			rc = -rc;
+			printf("readdir failed, rc: %s (%d)\n", strerror(rc), rc);
+			break;
+		}
+	}
+
+	printf("thread ended, rc=%d\n", rc);
+	pthread_exit(NULL);	
+}
+
 
 int main() {
-	int rc;
+	int rc, i;
 	struct p9_handle *p9_handle;
+
+	pthread_t thrid[THRNUM];	
 
         rc = p9_init(&p9_handle, "sample.conf");
         if (rc) {
@@ -27,6 +130,13 @@ int main() {
         }
 
         INFO_LOG(1, "Init success");
+
+	for (i=0; i<THRNUM; i++)
+		pthread_create(&thrid[i], NULL, walkthr, p9_handle);
+
+	for (i=0; i<THRNUM; i++)
+		pthread_join(thrid[i], NULL);
+
         p9_destroy(&p9_handle);
 
         return rc;

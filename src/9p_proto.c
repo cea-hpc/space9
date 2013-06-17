@@ -1260,7 +1260,7 @@ int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid
 	p9_setvalue(cursor, fid->fid, uint32_t);
 	p9_setvalue(cursor, newfid->fid, uint32_t);
 	if (name)
-		p9_setstr(cursor, strnlen(name, MAXPATHLEN), name);
+		p9_setstr(cursor, strnlen(name, XATTR_NAME_MAX), name);
 	else
 		p9_setstr(cursor, 0, "");
 

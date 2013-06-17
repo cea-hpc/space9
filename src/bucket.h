@@ -44,6 +44,8 @@ static inline void bucket_put(bucket_t *bucket, void *item) {
 		bucket->array[bucket->last] = item;
 		bucket->last++;
 		bucket->count++;
+		if (bucket->last == bucket->size)
+			bucket->last = 0;
 	}
 	pthread_mutex_unlock(&bucket->lock);
 }
@@ -59,6 +61,8 @@ static inline void * bucket_get(bucket_t *bucket) {
 		item = bucket->array[bucket->first];
 		bucket->first++;
 		bucket->count--;
+		if (bucket->first == bucket->size)
+			bucket->first = 0;
 	}
 	pthread_mutex_unlock(&bucket->lock);
 
