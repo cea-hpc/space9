@@ -108,7 +108,6 @@ struct p9_handle {
 	pthread_mutex_t tag_lock;
 	pthread_cond_t tag_cond;
 	pthread_mutex_t fid_lock;
-	pthread_cond_t fid_cond;
 	pthread_mutex_t credit_lock;
 	pthread_cond_t credit_cond;
 	uint32_t credits;
@@ -123,6 +122,7 @@ struct p9_handle {
 	uint32_t recv_num;
 	uint32_t msize;
 	uint32_t debug;
+	uint32_t full_debug;
 	struct p9_fid *root_fid;
 };
 
@@ -181,9 +181,21 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    data:		buffer to send
+ * @param [IN]    tag:		tag to use
  * @return 0 on success, errno value on error
  */
 int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
+
+/**
+ * @brief Put the buffer back in the list of available buffers for use
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    data:		buffer to put back
+ * @param [IN]    tag:		tag to put back
+ * @return 0 on success, errno value on error
+ */
+int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
+
 
 /**
  * @brief Waits for a reply with a given tag to arrive

@@ -26,6 +26,8 @@ void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 
 	p9_get_tag(&tag, data->data);
 
+	INFO_LOG(p9_handle->full_debug, "got reply for tag %u", tag);
+
 	/* kludge on P9_NOTAG to have a smaller array */
 	if (tag == P9_NOTAG)
 		tag = 0;
@@ -50,7 +52,7 @@ void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 
 void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 	uint16_t tag = (uint16_t)(uint64_t)arg;
-	ERROR_LOG("message with tag %u was not send correctly", tag);
+	ERROR_LOG("message with tag %u was not sent correctly", tag);
 	/** @todo: get a static buffer with RERROR to fill tag with */
 
 	p9_send_cb(trans, data, arg);

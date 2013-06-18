@@ -16,7 +16,7 @@
 
 #include "bucket.h"
 
-#define THRNUM 10
+#define DEFAULT_THRNUM 10
 #define STARTPOINT "sigmund"
 
 struct nlist {
@@ -112,16 +112,28 @@ static void *walkthr(void* arg) {
 		}
 	}
 
-	printf("thread ended, rc=%d\n", rc);
+	if (rc)
+		printf("thread ended, rc=%d\n", rc);
+
 	pthread_exit(NULL);	
 }
 
 
-int main() {
+int main(int argc, char **argv) {
 	int rc, i;
 	struct p9_handle *p9_handle;
 
-	pthread_t thrid[THRNUM];	
+	pthread_t *thrid;
+	int thrnum = 0;
+
+	if (argc >= 2) {
+		thrnum=atoi(argv[1]);
+	}
+	if (thrnum == 0) {
+		thrnum = DEFAULT_THRNUM;
+	}
+
+	thrid = malloc(sizeof(pthread_t)*thrnum);
 
         rc = p9_init(&p9_handle, "sample.conf");
         if (rc) {
@@ -131,10 +143,10 @@ int main() {
 
         INFO_LOG(1, "Init success");
 
-	for (i=0; i<THRNUM; i++)
+	for (i=0; i<thrnum; i++)
 		pthread_create(&thrid[i], NULL, walkthr, p9_handle);
 
-	for (i=0; i<THRNUM; i++)
+	for (i=0; i<thrnum; i++)
 		pthread_join(thrid[i], NULL);
 
         p9_destroy(&p9_handle);

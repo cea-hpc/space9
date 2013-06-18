@@ -117,9 +117,11 @@ int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) 
 		return rc;
 
 	rc = p9c_getfid(p9_handle, &fid);
-	// FIXME: free buffer
-	if (rc)
+	if (rc) {
+		p9c_abortrequest(p9_handle, data, tag);
+		ERROR_LOG("not enough fids - failing attach");
 		return rc;
+	}
 
 	p9_initcursor(cursor, data->data, P9_TATTACH, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -200,9 +202,11 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 		return rc;
 
 	rc = p9c_getfid(p9_handle, &newfid);
-	// FIXME: free buffer
-	if (rc)
+	if (rc) {
+		p9c_abortrequest(p9_handle, data, tag);
+		ERROR_LOG("not enough fids - failing walk");
 		return rc;
+	}
 
 	p9_initcursor(cursor, data->data, P9_TWALK, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -1252,9 +1256,11 @@ int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid
 		return rc;
 
 	rc = p9c_getfid(p9_handle, &newfid);
-	// FIXME: free buffer
-	if (rc)
+	if (rc) {
+		p9c_abortrequest(p9_handle, data, tag);
+		ERROR_LOG("not enough fids - failing xattrwalk");
 		return rc;
+	}
 
 	p9_initcursor(cursor, data->data, P9_TXATTRWALK, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);

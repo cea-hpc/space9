@@ -71,11 +71,42 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
 	// We need more recv buffers ready than requests pending
 
+	INFO_LOG(p9_handle->full_debug, "send request for tag %u", tag);
+
 	if (data->next != NULL) {
 		msk_post_n_send(p9_handle->trans, data, 2, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 	} else {
 		msk_post_send(p9_handle->trans, data, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 	}
+
+	return 0;
+}
+
+
+/**
+ * @brief Put the buffer back in the list of available buffers for use
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    data:		buffer to put back
+ * @param [IN]    tag:		tag to put back
+ * @return 0 on success, errno value on error
+ */
+int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
+	/* release data through sendrequest's callback */
+	p9_send_cb(p9_handle->trans, data, NULL);
+
+	/* and tag, getreply code */
+	pthread_mutex_lock(&p9_handle->tag_lock);
+	if (tag != P9_NOTAG)
+		clear_bit(p9_handle->tags_bitmap, tag);
+	pthread_cond_broadcast(&p9_handle->tag_cond);
+	pthread_mutex_unlock(&p9_handle->tag_lock);
+
+	/* ... and credit, putreply code */
+	pthread_mutex_lock(&p9_handle->credit_lock);
+	p9_handle->credits++;
+	pthread_cond_broadcast(&p9_handle->credit_cond);
+	pthread_mutex_unlock(&p9_handle->credit_lock);
 
 	return 0;
 }
@@ -142,16 +173,16 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	uint32_t fid_i;
 
 	pthread_mutex_lock(&p9_handle->fid_lock);
-	while ((fid_i = get_and_set_first_bit(p9_handle->fids_bitmap, p9_handle->max_fid)) == p9_handle->max_fid)
-		pthread_cond_wait(&p9_handle->fid_cond, &p9_handle->fid_lock);
+	fid_i = get_and_set_first_bit(p9_handle->fids_bitmap, p9_handle->max_fid);
 	pthread_mutex_unlock(&p9_handle->fid_lock);
 
+	if (fid_i == p9_handle->max_fid)
+		return ERANGE;
 
 	fid = bucket_get(p9_handle->fids_bucket);
 	if (fid == NULL) {
 		pthread_mutex_lock(&p9_handle->fid_lock);
 		clear_bit(p9_handle->fids_bitmap, fid_i);
-		pthread_cond_signal(&p9_handle->fid_cond);
 		pthread_mutex_unlock(&p9_handle->fid_lock);
 		return ENOMEM;
 	}
@@ -172,7 +203,6 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	pthread_mutex_lock(&p9_handle->fid_lock);
 	clear_bit(p9_handle->fids_bitmap, fid->fid);
-	pthread_cond_signal(&p9_handle->fid_cond);
 	pthread_mutex_unlock(&p9_handle->fid_lock);
 
 	bucket_put(p9_handle->fids_bucket, fid);
