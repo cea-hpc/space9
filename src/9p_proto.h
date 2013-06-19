@@ -297,6 +297,51 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
 int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata);
 int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size);
 
+/* Bit values for getattr valid field. */
+#define P9_GETATTR_MODE		0x00000001ULL
+#define P9_GETATTR_NLINK	0x00000002ULL
+#define P9_GETATTR_UID		0x00000004ULL
+#define P9_GETATTR_GID		0x00000008ULL
+#define P9_GETATTR_RDEV		0x00000010ULL
+#define P9_GETATTR_ATIME	0x00000020ULL
+#define P9_GETATTR_MTIME	0x00000040ULL
+#define P9_GETATTR_CTIME	0x00000080ULL
+#define P9_GETATTR_INO		0x00000100ULL
+#define P9_GETATTR_SIZE		0x00000200ULL
+#define P9_GETATTR_BLOCKS	0x00000400ULL
+
+#define P9_GETATTR_BTIME	0x00000800ULL
+#define P9_GETATTR_GEN		0x00001000ULL
+#define P9_GETATTR_DATA_VERSION	0x00002000ULL
+
+#define P9_GETATTR_BASIC	0x000007ffULL /* Mask for fields up to BLOCKS */
+#define P9_GETATTR_ALL		0x00003fffULL /* Mask for All fields above */
+
+struct p9p_getattr {
+	uint64_t valid;
+	uint32_t mode;
+	uint32_t uid;
+	uint32_t gid;
+	uint64_t nlink;
+	uint64_t rdev;
+	uint64_t size;
+	uint64_t blksize;
+	uint64_t blkcount;
+	uint64_t atime_sec;
+	uint64_t mtime_sec;
+	uint64_t ctime_sec;
+#if 0
+	/* These all aren't used by the server */
+	uint64_t atime_nsec;
+	uint64_t mtime_nsec;
+	uint64_t ctime_nsec;
+	uint64_t btime_sec;
+	uint64_t btime_nsec;
+	uint64_t gen;
+	uint64_t data_version;
+#endif
+};
+
 /** p9_getattr
  *
  *
@@ -311,7 +356,33 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
  * @param
  * @return 0 on success, errno value on error.
  */
-//int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct stat *stat);
+int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_getattr *attr);
+
+/* Bit values for setattr valid field from <linux/fs.h>. */
+#define P9_SETATTR_MODE		0x00000001UL
+#define P9_SETATTR_UID		0x00000002UL
+#define P9_SETATTR_GID		0x00000004UL
+#define P9_SETATTR_SIZE		0x00000008UL
+#define P9_SETATTR_ATIME	0x00000010UL
+#define P9_SETATTR_MTIME	0x00000020UL
+#define P9_SETATTR_CTIME	0x00000040UL
+#define P9_SETATTR_ATIME_SET	0x00000080UL
+#define P9_SETATTR_MTIME_SET	0x00000100UL
+
+struct p9p_setattr {
+	uint32_t valid;
+	uint32_t mode;
+	uint32_t uid;
+	uint32_t gid;
+	uint64_t size;
+	uint64_t atime_sec;
+	uint64_t mtime_sec;
+#if 0
+	/* unused by server */
+	uint64_t atime_nsec;
+	uint64_t mtime_nsec;
+#endif
+};
 
 /** p9_setattr
  *
@@ -324,6 +395,7 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
  * @param
  * @return 0 on success, errno value on error.
  */
+int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_setattr *attr);
 
 /** p9_xattrwalk
  *
@@ -397,6 +469,20 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *offse
  * @param
  * @return 0 on success, errno value on error.
  */
+/* Bit values for lock type. */
+#define P9_LOCK_TYPE_RDLCK 0
+#define P9_LOCK_TYPE_WRLCK 1
+#define P9_LOCK_TYPE_UNLCK 2
+
+/* Bit values for lock status. */
+#define P9_LOCK_SUCCESS 0
+#define P9_LOCK_BLOCKED 1
+#define P9_LOCK_ERROR 2
+#define P9_LOCK_GRACE 3
+
+/* Bit values for lock flags. */
+#define P9_LOCK_FLAGS_BLOCK 1
+#define P9_LOCK_FLAGS_RECLAIM 2
 
 /** p9_getlock
  *

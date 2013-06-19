@@ -1507,3 +1507,166 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 
 	return rc;
 }
+
+
+/** p9_getattr
+ *
+ *
+ * size[4] Tgetattr tag[2] fid[4] request_mask[8]
+ * size[4] Rgetattr tag[2] valid[8] qid[13] mode[4] uid[4] gid[4] nlink[8]
+ *                  rdev[8] size[8] blksize[8] blocks[8]
+ *                  atime_sec[8] atime_nsec[8] mtime_sec[8] mtime_nsec[8]
+ *                  ctime_sec[8] ctime_nsec[8] btime_sec[8] btime_nsec[8]
+ *                  gen[8] data_version[8]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param
+ * @return 0 on success, errno value on error.
+ */
+int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_getattr *attr) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || attr == NULL)
+		return EINVAL;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	if (attr->valid == 0) {
+		attr->valid = P9_GETATTR_BASIC;
+	}
+
+	p9_initcursor(cursor, data->data, P9_TGETATTR, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, attr->valid, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "getattr on fid %u (%s), attr mask 0x%"PRIx64, fid->fid, fid->path, attr->valid);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RGETATTR:
+			p9_getvalue(cursor, attr->valid, uint64_t);
+			p9_skipqid(cursor);
+			/* get values anyway */
+			p9_getvalue(cursor, attr->mode, uint32_t);
+			p9_getvalue(cursor, attr->uid, uint32_t);
+			p9_getvalue(cursor, attr->gid, uint32_t);
+			p9_getvalue(cursor, attr->nlink, uint64_t);
+			p9_getvalue(cursor, attr->rdev, uint64_t);
+			p9_getvalue(cursor, attr->size, uint64_t);
+			p9_getvalue(cursor, attr->blksize, uint64_t);
+			p9_getvalue(cursor, attr->blkcount, uint64_t);
+			p9_getvalue(cursor, attr->atime_sec, uint64_t);
+			p9_skipvalue(cursor, uint64_t); /* atime_nsec */
+			p9_getvalue(cursor, attr->mtime_sec, uint64_t);
+			p9_skipvalue(cursor, uint64_t); /* mtime_nsec */
+			p9_getvalue(cursor, attr->ctime_sec, uint64_t);
+#if 0
+			p9_skipvalue(cursor, uint64_t); /* ctime_nsec */
+			p9_skipvalue(cursor, uint64_t); /* btime_sec */
+			p9_skipvalue(cursor, uint64_t); /* btime_nsec */
+			p9_skipvalue(cursor, uint64_t); /* gen */
+			p9_skipvalue(cursor, uint64_t); /* data_version */
+#endif
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TGETATTR, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/** p9_setattr
+ *
+ *
+ * size[4] Tsetattr tag[2] fid[4] valid[4] mode[4] uid[4] gid[4] size[8]
+ *                  atime_sec[8] atime_nsec[8] mtime_sec[8] mtime_nsec[8]
+ * size[4] Rsetattr tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param
+ * @return 0 on success, errno value on error.
+ */
+int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_setattr *attr) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || attr == NULL || attr->valid == 0)
+		return EINVAL;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TSETATTR, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, attr->valid, uint32_t);
+	p9_setvalue(cursor, attr->mode, uint32_t);
+	p9_setvalue(cursor, attr->uid, uint32_t);
+	p9_setvalue(cursor, attr->gid, uint32_t);
+	p9_setvalue(cursor, attr->size, uint64_t);
+	p9_setvalue(cursor, attr->atime_sec, uint64_t);
+	p9_setvalue(cursor, 0LL, uint64_t); /* atime_nsec */
+	p9_setvalue(cursor, attr->mtime_sec, uint64_t);
+	p9_setvalue(cursor, 0LL, uint64_t); /* mtime_nsec */
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "setattr on fid %u (%s), attr mask 0x%"PRIx32, fid->fid, fid->path, attr->valid);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RSETATTR:
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TSETATTR, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}

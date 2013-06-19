@@ -173,6 +173,7 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 	struct p9_fid *fid;
 	char *filename;
 	uint32_t count;
+	struct p9p_setattr attr;
 
 	fid = NULL;
 	filename = arg;
@@ -184,6 +185,7 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 		arg++;
 		count = strlen(arg) + 1;
 		arg[count-1]='\n';
+		arg[count]='\0';
 	}
 
 	rc = p9p_walk(ctx->p9_handle, ctx->cwd, filename, &fid);
@@ -191,22 +193,31 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 		rc = p9p_walk(ctx->p9_handle, ctx->cwd, NULL, &fid);
 		if (rc) {
 			printf("walk failed to duplicate fid %u (%s), error: %s (%d)\n", ctx->cwd->fid, ctx->cwd->path, strerror(rc), rc);
-			return EIO;
+			return rc;
 		}
 		rc = p9p_lcreate(ctx->p9_handle, fid, filename, O_WRONLY, 0640, getegid(), NULL);
 		if (rc) {
 			printf("lcreate failed on dir %s, filename %s, error: %s (%d)\n", ctx->cwd->path, filename, strerror(rc), rc);
-			return EIO;
+			return rc;
 		}
 	} else if (rc) {
 		printf("walk failed from %s to %s, error: %s (%d)\n", ctx->cwd->path, filename, strerror(rc), rc);
-		return EIO;
+		return rc;
 	} else {
 		rc = p9p_lopen(ctx->p9_handle, fid, O_WRONLY | O_TRUNC, NULL);
 		if (rc) {
 			printf("lopen failed on file %s, error: %s (%d)\n", fid->path, strerror(rc), rc);
-			return EIO;
+			return rc;
 		}
+	}
+
+	memset(&attr, 0, sizeof(attr));
+	attr.valid = P9_SETATTR_SIZE;
+	attr.size = 0;
+	rc = p9p_setattr(ctx->p9_handle, fid, &attr);
+	if (rc) {
+		printf("setattr failed on file %s, error: %s (%d)\n", fid->path, strerror(rc), rc);
+		return rc;
 	}
 
 	if (arg) {
