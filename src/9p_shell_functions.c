@@ -9,7 +9,7 @@
 #include "9p_shell_functions.h"
 
 static int ls_callback(void *arg, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
-	printf("%*s\n", namelen, name);
+	printf("%.*s\n", namelen, name);
 	return 0;
 }
 

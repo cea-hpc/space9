@@ -40,7 +40,7 @@ static int rd_cb(void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t typ
 		return 0;
 
 	if (cb_arg->debug)
-		printf("%*s\n", namelen, name);
+		printf("%.*s\n", namelen, name);
 
 	if (qid->type == P9_QTDIR) {
 		n = bucket_get(cb_arg->buck);
