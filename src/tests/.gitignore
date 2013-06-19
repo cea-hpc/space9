@@ -1,3 +1,5 @@
 test_bitmap
 test_utils
-test_parallel
+find
+readwrite
+

@@ -1,11 +1,6 @@
 #ifndef P9_PROTO_INTERNALS
 #define P9_PROTO_INTERNALS
 
-#define P9_HDR_SIZE  4
-#define P9_TYPE_SIZE 1
-#define P9_TAG_SIZE  2
-#define P9_STD_HDR_SIZE (P9_HDR_SIZE + P9_TYPE_SIZE + P9_TAG_SIZE)
-
 /**
  * enum p9_msg_t - 9P message types
  * @P9_TLERROR: not used
@@ -132,33 +127,11 @@ enum p9_msgtype {
 };
 
 
-/* Various header lengths to check message sizes : */
-
-/* size[4] Rread tag[2] count[4] data[count] */
-#define P9_ROOM_RREAD (P9_STD_HDR_SIZE + 4 )
-
-/* size[4] Twrite tag[2] fid[4] offset[8] count[4] data[count] */
-#define P9_ROOM_TWRITE (P9_STD_HDR_SIZE + 4 + 8 + 4)
-
-/* size[4] Rreaddir tag[2] count[4] data[count] */
-#define P9_ROOM_RREADDIR (P9_STD_HDR_SIZE + 4 )
-
-
-typedef struct p9_fid__
-{
-  uint32_t                fid;
-  p9_qid_t               qid;
-  char                    name[MAXPATHLEN];
-  union
-    {
-       uint32_t      iounit;
-       struct p9_xattr_desc
-        {
-          unsigned int xattr_id;
-          caddr_t      xattr_content;
-        } xattr;
-    } specdata;
-} p9_fid_t;
+/* Bit values for lock status. */
+#define P9_LOCK_SUCCESS 0
+#define P9_LOCK_BLOCKED 1
+#define P9_LOCK_ERROR 2
+#define P9_LOCK_GRACE 3
 
 #define p9_getheader( __cursor, __var)    \
 do {                                      \

@@ -96,6 +96,7 @@ struct p9_tag {
 struct p9_handle {
 	uint16_t max_tag;
 	char aname[MAXPATHLEN];
+	char hostname[MAX_CANON+1];
 	uint8_t *rdmabuf;
 	msk_trans_t *trans;
 	struct ibv_mr *mr;

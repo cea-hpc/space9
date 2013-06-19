@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
 
 	thrid = malloc(sizeof(pthread_t)*thrnum);
 
-        rc = p9_init(&p9_handle, "sample.conf");
+        rc = p9_init(&p9_handle, "../sample.conf");
         if (rc) {
                 ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
                 return rc;

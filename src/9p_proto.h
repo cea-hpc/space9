@@ -4,6 +4,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#define P9_HDR_SIZE  4
+#define P9_TYPE_SIZE 1
+#define P9_TAG_SIZE  2
+#define P9_STD_HDR_SIZE (P9_HDR_SIZE + P9_TYPE_SIZE + P9_TAG_SIZE)
+
+
 /**
  * @brief Must be used first uppon connexion:
  * It is needed for client/server to agree on a msize, and to define the protocol version used (always "9P2000.L")
@@ -20,16 +26,18 @@
 int p9p_version(struct p9_handle *p9_handle);
 
 /**
- * @brief Not implemented on either side, would be used with p9_attach to setup an authentification
+ * @brief Not implemented server side, would be used with p9_attach to setup an authentification
  *
  *
  * size[4] Tauth tag[2] afid[4] uname[s] aname[s] n_uname[4]
  * size[4] Rauth tag[2] aqid[13]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    uid:          uid to use
+ * @param [IN]    pafid:	auth fid
  * @return 0 on success, errno value on error.
  */
+int p9p_auth(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pafid);
 
 /**
  * @brief Attach a mount point for a given user
@@ -77,6 +85,8 @@ int p9p_flush(struct p9_handle *p9_handle, uint16_t tag);
  */
 int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid);
 
+/* size[4] Rread tag[2] count[4] data[count] */
+#define P9_ROOM_RREAD (P9_STD_HDR_SIZE + 4 )
 /**
  * @brief zero-copy read from a file.
  * Even if count is > msize, more won't be received
@@ -93,7 +103,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, uint32_t *zsize, msk_data_t **pdata);
+int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, msk_data_t **pdata);
 
 /**
  * @brief Read from a file.
@@ -113,6 +123,9 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
  */
 int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *buf);
 
+
+/* size[4] Twrite tag[2] fid[4] offset[8] count[4] data[count] */
+#define P9_ROOM_TWRITE (P9_STD_HDR_SIZE + 4 + 8 + 4)
 /**
  * @brief zero-copy write from a file.
  * Even if count is > msize, more won't be received
@@ -219,8 +232,8 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
  * @param [INOUT] fid:		fid of the directory where to create the new file.
  *				Will be the created file's on success
  * @param [IN]    name:		name of the new file
- * @param [IN]    flags:	Linux kernel intent bits
- * @param [IN]    mode:		Linux creat(2) mode bits
+ * @param [IN]    flags:	Linux kernel intent bits (e.g. O_RDONLY, O_WRONLY, O_RDWR)
+ * @param [IN]    mode:		Linux creat(2) mode bits (e.g. 0640)
  * @param [IN]    gid:		effective gid
  * @param [OUT]   iounit:	iounit to set if non-NULL
  * @return 0 on success, errno value on error.
@@ -292,9 +305,9 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
  * @param [IN]    fid:		fid of the link
  * @param [OUT]   target:	content of the link
  * @param [IN]    size:		size of the target buffer
- * @return 0 on success, errno value on error.
+ * @return read size if >=0 on success (it was truncated if return value > size argument), -errno value on error.
  */
-int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata);
+int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, msk_data_t **pdata);
 int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size);
 
 /* Bit values for getattr valid field. */
@@ -342,7 +355,8 @@ struct p9p_getattr {
 #endif
 };
 
-/** p9_getattr
+/**
+ * @brief getattr
  *
  *
  * size[4] Tgetattr tag[2] fid[4] request_mask[8]
@@ -384,7 +398,8 @@ struct p9p_setattr {
 #endif
 };
 
-/** p9_setattr
+/**
+ * @brief setattr
  *
  *
  * size[4] Tsetattr tag[2] fid[4] valid[4] mode[4] uid[4] gid[4] size[8]
@@ -397,7 +412,9 @@ struct p9p_setattr {
  */
 int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_setattr *attr);
 
-/** p9_xattrwalk
+/**
+ * @brief get a new fid to read/write given attr (or get the list)
+ *
  *
  * Allocate a new fid to read the content of xattr name from fid
  * if name is NULL or empty, content will be the list of xattrs
@@ -414,7 +431,8 @@ int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_seta
  */
 int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid **pnewfid, char *name, uint64_t *psize);
 
-/** p9_xattrcreate
+/**
+ * @brief change fid into xattr content
  *
  * Replace fid with one where xattr content will be writable
  *
@@ -430,7 +448,13 @@ int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid
  */
 int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uint64_t size, uint32_t flags);
 
-/** p9_readdir
+
+/* size[4] Rreaddir tag[2] count[4] data[count] */
+#define P9_ROOM_RREADDIR (P9_STD_HDR_SIZE + 4 )
+typedef int (*p9p_readdir_cb) (void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type,
+		uint16_t namelen, char *name);
+/**
+ * @brief readdir with callback on each entry
  *
  *
  * size[4] Treaddir tag[2] fid[4] offset[8] count[4]
@@ -445,75 +469,91 @@ int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name,
  * @param [IN]    callback_arg:	user-provided callback arg
  * @return 0 on eod, number of entires read if positive, -errno value on error (or callback return value)
  */
-typedef int (*p9p_readdir_cb)(void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
 int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *offset, p9p_readdir_cb callback, void *callback_arg);
 
-/** p9_fsync
+/**
+ * @brief fsync
  *
  *
  * size[4] Tfsync tag[2] fid[4]
  * size[4] Rfsync tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    fid:		fid to fsync
  * @return 0 on success, errno value on error.
  */
+int p9p_fsync(struct p9_handle *p9_handle, struct p9_fid *fid);
 
-/** p9_lock
+/* Bit values for lock flags. */
+#define P9_LOCK_FLAGS_BLOCK 1
+#define P9_LOCK_FLAGS_RECLAIM 2
+
+/**
+ * @brief lock is used to acquire or release a POSIX record lock on fid and has semantics similar to Linux fcntl(F_SETLK).
+ * start, length, and proc_id correspond to the analagous fields passed to Linux fcntl(F_SETLK) (man 2 fcntl)
+ * flags bits are P9_LOCK_FLAGS_BLOCK (non-block without it) and RECLAIM (unused)
+ *
+ * client_id is set to the hostname by the engine
  *
  *
  * size[4] Tlock tag[2] fid[4] type[1] flags[4] start[8] length[8] proc_id[4] client_id[s]
  * size[4] Rlock tag[2] status[1]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
- * @return 0 on success, errno value on error.
+ * @param [IN]    fid:		fid to lock
+ * @param [IN]    type:		lock type (F_RDLCK, F_WRLCK, F_UNLCK)
+ * @param [IN]    flags:	flag bits are P9_LOCK_FLAGS_BLOCK or RECLAIM
+ * @param [IN]    start:	Starting offset for lock
+ * @param [IN]    length:	Number of bytes to lock
+ * @param [IN]    proc_id:	PID of process blocking our lock
+ * @return 0 on success, errno value on error. EACCESS on error, EAGAIN on lock held or grace period
  */
-/* Bit values for lock type. */
-#define P9_LOCK_TYPE_RDLCK 0
-#define P9_LOCK_TYPE_WRLCK 1
-#define P9_LOCK_TYPE_UNLCK 2
+int p9p_lock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t type, uint32_t flags, uint64_t start, uint64_t length, uint32_t proc_id);
 
-/* Bit values for lock status. */
-#define P9_LOCK_SUCCESS 0
-#define P9_LOCK_BLOCKED 1
-#define P9_LOCK_ERROR 2
-#define P9_LOCK_GRACE 3
-
-/* Bit values for lock flags. */
-#define P9_LOCK_FLAGS_BLOCK 1
-#define P9_LOCK_FLAGS_RECLAIM 2
-
-/** p9_getlock
+/**
+ * @brief getlock tests for the existence of a POSIX record lock and has semantics similar to Linux fcntl(F_GETLK).
+ * As with lock, type has one of the values defined above, and start, length, and proc_id
+ * correspond to the analagous fields in struct flock passed to Linux fcntl(F_GETLK).
  *
+ * all values are pointers to values used and overwritten on success
  *
  * size[4] Tgetlock tag[2] fid[4] type[1] start[8] length[8] proc_id[4] client_id[s]
  * size[4] Rgetlock tag[2] type[1] start[8] length[8] proc_id[4] client_id[s]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    fid:		fid to get lock on
+ * @param [IN]    ptype:	lock type (F_RDLCK, F_WRLCK, F_UNLCK)
+ * @param [IN]    pstart:	Starting offset for lock
+ * @param [IN]    plength:	Number of bytes to lock
+ * @param [IN]    pproc_id:	PID of process blocking our lock
  * @return 0 on success, errno value on error.
  */
+int p9p_getlock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t *ptype, uint64_t *pstart, uint64_t *plength, uint32_t *pproc_id);
 
-/** p9_link
+/**
+ * @brief link
  *
  *
  * size[4] Tlink tag[2] dfid[4] fid[4] name[s]
  * size[4] Rlink tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param
+ * @param [IN]    dfid:		fid of the directory where the new link will be created
+ * @param [IN]    fid:		link target
+ * @param [IN]    name:		name of the link
  * @return 0 on success, errno value on error.
  */
+int p9p_link(struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_fid *fid, char *name);
 
-/** p9_mkdir
+/**
+ * @brief mkdir
  *
  *
  * size[4] Tmkdir tag[2] dfid[4] name[s] mode[4] gid[4]
  * size[4] Rmkdir tag[2] qid[13]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    dfid:		fid of the directory where the new symlink will be created
+ * @param [IN]    dfid:		fid of the directory where the new directory will be created
  * @param [IN]    name:		name of the link
  * @param [IN]    mode:		creation mode
  * @param [IN]    gid:		effective gid
@@ -523,9 +563,9 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *offse
 int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint32_t mode, uint32_t gid,
                struct p9_qid *qid);
 
-/** p9_renameat
+/**
+ * @brief renameat is preferred over rename
  *
- * renameat is preferred over rename
  *
  * size[4] Trenameat tag[2] olddirfid[4] oldname[s] newdirfid[4] newname[s]
  * size[4] Rrenameat tag[2]
@@ -539,9 +579,9 @@ int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint
  */
 int p9p_renameat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, struct p9_fid *newdfid, char *newname);
 
-/** p9_unlinkat
+/**
+ * @brief unlink file by name
  *
- * unlink file by name
  *
  * size[4] Tunlinkat tag[2] dirfid[4] name[s] flags[4]
  * size[4] Runlinkat tag[2]

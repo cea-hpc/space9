@@ -85,6 +85,87 @@ int p9p_version(struct p9_handle *p9_handle) {
 }
 
 /**
+ * @brief Not implemented server side, would be used with p9_attach to setup an authentification
+ *
+ *
+ * size[4] Tauth tag[2] afid[4] uname[s] aname[s] n_uname[4]
+ * size[4] Rauth tag[2] aqid[13]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    uid:          uid to use
+ * @param [IN]    pafid:	auth fid
+ * @return 0 on success, errno value on error.
+ */
+int p9p_auth(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pafid) {
+	int rc;
+	uint8_t msgtype;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t *cursor;
+	struct p9_fid *fid;
+
+	/* Sanity check */
+	if (p9_handle == NULL || pafid == NULL)
+		return EINVAL;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	rc = p9c_getfid(p9_handle, &fid);
+	if (rc) {
+		p9c_abortrequest(p9_handle, data, tag);
+		ERROR_LOG("not enough fids - failing auth");
+		return rc;
+	}
+
+	p9_initcursor(cursor, data->data, P9_TAUTH, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setstr(cursor, 0, "");
+	p9_setstr(cursor, strlen(p9_handle->aname), p9_handle->aname);
+#ifdef ALLOW_UID_OVERRIDE
+	p9_setvalue(cursor, uid, uint32_t);
+#else
+	p9_setvalue(cursor, geteuid(), uint32_t);
+#endif
+	p9_setmsglen(cursor, data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RAUTH:
+			p9_getqid(cursor, fid->qid);
+			strncpy(fid->path, "<afid>", 7);
+			fid->pathlen = 6;
+			*pafid = fid;
+			break;
+
+		case P9_RERROR:
+			p9c_putfid(p9_handle, fid);
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TAUTH, tag);
+			p9c_putfid(p9_handle, fid);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/**
  * @brief Attach a mount point for a given user
  * Not authentification yet.
  *
@@ -160,6 +241,7 @@ int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) 
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TATTACH, tag);
+			p9c_putfid(p9_handle, fid);
 			rc = EIO;
 	}
 
@@ -363,7 +445,6 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		fid to open
  * @param [IN]    flags:	open flags as described in Linux open(2): O_RDONLY, O_RDWR, O_WRONLY, etc.
- * @param [OUT]   qid:		qid set if non-NULL
  * @param [OUT]   iounit:	iounit set if non-NULL. This is the maximum size for a single read or write if not 0.
  *                              FIXME: useless imo, we know the msize and can compute this as cleverly as the server.
  *                              currently, ganesha sets this to 0 anyway.
@@ -389,6 +470,8 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
 	p9_setvalue(cursor, fid->fid, uint32_t);
 	p9_setvalue(cursor, flags, uint32_t);
 	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "lopen on fid %u (%s), flags 0x%x", fid->fid, fid->path, flags);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -433,8 +516,8 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
  * @param [INOUT] fid:		fid of the directory where to create the new file.
  *				Will be the created file's on success
  * @param [IN]    name:		name of the new file
- * @param [IN]    flags:	Linux kernel intent bits
- * @param [IN]    mode:		Linux creat(2) mode bits
+ * @param [IN]    flags:	Linux kernel intent bits (e.g. O_RDONLY, O_WRONLY, O_RDWR)
+ * @param [IN]    mode:		Linux creat(2) mode bits (e.g. 0640)
  * @param [IN]    gid:		effective gid
  * @param [OUT]   iounit:	iounit to set if non-NULL
  * @return 0 on success, errno value on error.
@@ -462,10 +545,12 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_setstr(cursor, strlen(name), name);
 	p9_setvalue(cursor, flags, uint32_t);
 	p9_setvalue(cursor, mode, uint32_t);
+	if (gid == 0)
+		gid = getegid();
 	p9_setvalue(cursor, gid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "lcreate from fid %u (%s) to name %s, flag %u, mode %u", fid->fid, fid->path, name, flags, mode);
+	INFO_LOG(p9_handle->debug, "lcreate from fid %u (%s) to name %s, flag 0x%x, mode %u", fid->fid, fid->path, name, flags, mode);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -479,7 +564,7 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLCREATE:
-			p9_skipqid(cursor);
+			p9_getqid(cursor, fid->qid);
 			if (iounit)
 				p9_getvalue(cursor, *iounit, uint32_t);
 			break;
@@ -551,7 +636,8 @@ int p9p_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, ch
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RSYMLINK:
-			p9_skipqid(cursor);
+			if (qid)
+				p9_getqid(cursor, *qid);
 			break;
 
 		case P9_RERROR:
@@ -720,7 +806,7 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
  * @param [IN]    size:		size of the target buffer
  * @return 0 on success, errno value on error.
  */
-int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, uint32_t *zsize, msk_data_t **pdata) {
+int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, msk_data_t **pdata) {
  	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -728,7 +814,7 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || ztarget == NULL || zsize == NULL || pdata == NULL)
+	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL)
 		return EINVAL;
 
 
@@ -754,18 +840,19 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 	switch(msgtype) {
 		case P9_RREADLINK:
 			*pdata = data;
-			p9_getstr(cursor, *zsize, *ztarget);
+			p9_getstr(cursor, rc, *ztarget);
 			break;
 
 		case P9_RERROR:
 			p9_getvalue(cursor, rc, uint32_t);
 			p9c_putreply(p9_handle, data);
+			rc = -rc;
 			break;
 
 		default:
 			p9c_putreply(p9_handle, data);
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TREADLINK, tag);
-			rc = EIO;
+			rc = -EIO;
 	}
 
 	return rc;
@@ -774,16 +861,16 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, uint32_t size) {
 	char *ztarget;
 	msk_data_t *data;
-	uint32_t zsize = 0;
 	int rc;
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || target == NULL)
 		return EINVAL;
 
-	rc = p9pz_readlink(p9_handle, fid, &ztarget, &zsize, &data);
-	if (rc == 0) {
-		strncpy(target, ztarget, MIN(size, zsize));
+	rc = p9pz_readlink(p9_handle, fid, &ztarget, &data);
+	if (rc >= 0) {
+		strncpy(target, ztarget, MIN(size-1, rc));
+		target[MIN(size-1,rc)] = '\0';
 		p9c_putreply(p9_handle, data);
 	}
 
@@ -896,12 +983,12 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL)
-		return EINVAL;
+		return -EINVAL;
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &data, &tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	p9_initcursor(cursor, data->data, P9_TREADDIR, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -914,11 +1001,11 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
-		return rc;
+		return -rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	cursor = data->data;
 	p9_getheader(cursor, msgtype);
@@ -983,7 +1070,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, uint32_t *zsize, msk_data_t **pdata) {
+int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, msk_data_t **pdata) {
  	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -991,14 +1078,14 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || zbuf == NULL || zsize == NULL || pdata == NULL || count == 0)
-		return EINVAL;
+	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0)
+		return -EINVAL;
 
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &data, &tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	if (count > p9_handle->msize - P9_ROOM_RREAD)
 		count = p9_handle->msize - P9_ROOM_RREAD;
@@ -1013,18 +1100,18 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
-		return rc;
+		return -rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	cursor = data->data;
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RREAD:
 			*pdata = data;
-			p9_getvalue(cursor, *zsize, uint32_t);
+			p9_getvalue(cursor, rc, uint32_t);
 			p9_getptr(cursor, *zbuf, char);
 			break;
 
@@ -1062,23 +1149,19 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *buf) {
 	char *zbuf;
 	msk_data_t *data;
-	uint32_t zsize;
 	int rc;
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || buf == NULL)
-		return EINVAL;
+		return -EINVAL;
 
-	rc = p9pz_read(p9_handle, fid, offset, count, &zbuf, &zsize, &data);
-	if (rc == 0)
-		strncpy(buf, zbuf, MIN(count, zsize));
+	rc = p9pz_read(p9_handle, fid, offset, count, &zbuf, &data);
+	if (rc > 0)
+		strncpy(buf, zbuf, MIN(count, rc));
 
 	p9c_putreply(p9_handle, data);
 
-	if (rc)
-		return -rc;
-	else
-		return MIN(zsize, INT_MAX);
+	return rc;
 }
 
 /**
@@ -1104,12 +1187,12 @@ int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset,
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || data == NULL || data->size == 0)
-		return EINVAL;
+		return -EINVAL;
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &header_data, &tag);
 	if (rc != 0 || header_data == NULL)
-		return rc;
+		return -rc;
 
 	if (data->size > p9_handle->msize - P9_ROOM_TWRITE)
 		data->size = p9_handle->msize - P9_ROOM_TWRITE;
@@ -1127,11 +1210,11 @@ int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset,
 
 	rc = p9c_sendrequest(p9_handle, header_data, tag);
 	if (rc != 0)
-		return rc;
+		return -rc;
 
 	rc = p9c_getreply(p9_handle, &header_data, tag);
 	if (rc != 0 || header_data == NULL)
-		return rc;
+		return -rc;
 
 	cursor = header_data->data;
 	p9_getheader(cursor, msgtype);
@@ -1180,12 +1263,12 @@ int p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || buf == NULL || count == 0)
-		return EINVAL;
+		return -EINVAL;
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &data, &tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	if (count > p9_handle->msize - P9_ROOM_TWRITE)
 		count = p9_handle->msize - P9_ROOM_TWRITE;
@@ -1203,11 +1286,11 @@ int p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
-		return rc;
+		return -rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	cursor = data->data;
 	p9_getheader(cursor, msgtype);
@@ -1671,6 +1754,311 @@ int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_seta
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TSETATTR, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/**
+ * @brief fsync
+ *
+ *
+ * size[4] Tfsync tag[2] fid[4]
+ * size[4] Rfsync tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to fsync
+ * @return 0 on success, errno value on error.
+ */
+int p9p_fsync(struct p9_handle *p9_handle, struct p9_fid *fid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TFSYNC, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "fsync on fid %u (%s)", fid->fid, fid->path);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RFSYNC:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TFSYNC, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/**
+ * @brief link
+ *
+ *
+ * size[4] Tlink tag[2] dfid[4] fid[4] name[s]
+ * size[4] Rlink tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    dfid:		fid of the directory where the new link will be created
+ * @param [IN]    fid:		link target
+ * @param [IN]    name:		name of the link
+ * @return 0 on success, errno value on error.
+ */
+int p9p_link(struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_fid *fid, char *name) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || dfid == NULL || name == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TLINK, tag);
+	p9_setvalue(cursor, dfid->fid, uint32_t);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setstr(cursor, strlen(name), name);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "link from fid %u (%s) to dfid %u (%s), filename %s", fid->fid, fid->path, dfid->fid, dfid->path, name);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RLINK:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TLINK, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+
+/**
+ * @brief lock is used to acquire or release a POSIX record lock on fid and has semantics similar to Linux fcntl(F_SETLK).
+ * start, length, and proc_id correspond to the analagous fields passed to Linux fcntl(F_SETLK) (man 2 fcntl)
+ * flags bits are P9_LOCK_FLAGS_BLOCK (non-block without it) and RECLAIM (unused)
+ *
+ * client_id is set to the hostname by the engine
+ *
+ *
+ * size[4] Tlock tag[2] fid[4] type[1] flags[4] start[8] length[8] proc_id[4] client_id[s]
+ * size[4] Rlock tag[2] status[1]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to lock
+ * @param [IN]    type:		lock type (F_RDLCK, F_WRLCK, F_UNLCK)
+ * @param [IN]    flags:	flag bits are P9_LOCK_FLAGS_BLOCK or RECLAIM
+ * @param [IN]    start:	Starting offset for lock
+ * @param [IN]    length:	Number of bytes to lock
+ * @param [IN]    proc_id:	PID of process blocking our lock
+ * @return 0 on success, errno value on error. EACCES on error, EAGAIN on lock held or grace period
+ */
+int p9p_lock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t type, uint32_t flags, uint64_t start, uint64_t length, uint32_t proc_id) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TLOCK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, type, uint8_t);
+	p9_setvalue(cursor, flags, uint32_t);
+	p9_setvalue(cursor, start, uint64_t);
+	p9_setvalue(cursor, length, uint64_t);
+	p9_setvalue(cursor, proc_id, uint32_t);
+	p9_setstr(cursor, strlen(p9_handle->hostname), p9_handle->hostname);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "lock on fid %u (%s), type %u, flags 0x%x, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, type, flags, start, length, proc_id);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RLOCK:
+			p9_getvalue(cursor, rc, uint8_t);
+			switch(rc) {
+				case P9_LOCK_SUCCESS:
+					rc = 0;
+					break;
+
+				case P9_LOCK_ERROR:
+					rc = EACCES;
+					break;
+
+				case P9_LOCK_BLOCKED:
+				case P9_LOCK_GRACE:
+					rc = EAGAIN;
+					break;
+
+				default:
+					rc=EINVAL;
+					break;
+			}
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TLOCK, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
+/**
+ * @brief getlock tests for the existence of a POSIX record lock and has semantics similar to Linux fcntl(F_GETLK).
+ * As with lock, type has one of the values defined above, and start, length, and proc_id
+ * correspond to the analagous fields in struct flock passed to Linux fcntl(F_GETLK).
+ *
+ * all values are pointers to values used and overwritten on success
+ *
+ * size[4] Tgetlock tag[2] fid[4] type[1] start[8] length[8] proc_id[4] client_id[s]
+ * size[4] Rgetlock tag[2] type[1] start[8] length[8] proc_id[4] client_id[s]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to get lock on
+ * @param [IN]    ptype:	lock type (F_RDLCK, F_WRLCK, F_UNLCK)
+ * @param [IN]    pstart:	Starting offset for lock
+ * @param [IN]    plength:	Number of bytes to lock
+ * @param [IN]    pproc_id:	PID of process blocking our lock
+ * @return 0 on success, errno value on error.
+ */
+int p9p_getlock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t *ptype, uint64_t *pstart, uint64_t *plength, uint32_t *pproc_id) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TGETLOCK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, *ptype, uint8_t);
+	p9_setvalue(cursor, *pstart, uint64_t);
+	p9_setvalue(cursor, *plength, uint64_t);
+	p9_setvalue(cursor, *pproc_id, uint32_t);
+	p9_setstr(cursor, strlen(p9_handle->hostname), p9_handle->hostname);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "getlock on fid %u (%s), type %u, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, *ptype, *pstart, *plength, *pproc_id);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RGETLOCK:
+			p9_getvalue(cursor, *ptype, uint8_t);
+			p9_getvalue(cursor, *pstart, uint64_t);
+			p9_getvalue(cursor, *plength, uint64_t);
+			p9_getvalue(cursor, *pproc_id, uint32_t);
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TGETLOCK, tag);
 			rc = EIO;
 	}
 

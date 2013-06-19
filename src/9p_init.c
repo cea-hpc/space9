@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <netdb.h>      // gethostbyname
 #include <sys/socket.h> // gethostbyname
+#include <unistd.h>     // gethostname
 #include <mooshika.h>
 #include "9p.h"
 #include "9p_proto.h"
@@ -209,12 +210,13 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 }
 
 int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
+	struct addrinfo hints, *info;
 	struct p9_conf p9_conf;
 	struct ibv_mr *mr;
 	struct p9_handle *p9_handle;
 	int i, rc;
 
-	rc = parser("sample.conf", &p9_conf);
+	rc = parser(conf_file, &p9_conf);
 	if (rc) {
 		ERROR_LOG("parsing error");
 		return rc;
@@ -241,6 +243,23 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->max_fid = p9_conf.max_fid;
 		p9_handle->max_tag = (p9_conf.max_tag > 65535 ? 65535 : p9_conf.max_tag);
 
+		/* cache our own hostname - p9_ahndle->hostname is MAX_CANON+1 long*/
+		p9_handle->hostname[MAX_CANON] = '\0';
+		gethostname(p9_handle->hostname, MAX_CANON);
+
+		memset(&hints, 0, sizeof(hints));
+		hints.ai_family = AF_UNSPEC; /*either IPV4 or IPV6*/
+		hints.ai_socktype = SOCK_STREAM;
+		hints.ai_flags = AI_CANONNAME;
+
+		if ((rc = getaddrinfo(p9_handle->hostname, "http", &hints, &info)) != 0) {
+		    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rc));
+		    break;
+		}
+		strncpy(p9_handle->hostname, info->ai_canonname, MAX_CANON);
+		freeaddrinfo(info);
+
+		/* mooshika init */
 		rc = msk_init(&p9_handle->trans, &p9_conf.trans_attr);
 		if (rc) {
 			ERROR_LOG("msk_init failed: %s (%d)", strerror(rc), rc);
