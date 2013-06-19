@@ -886,11 +886,12 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	uint64_t offset;
 	uint32_t count, i;
 	struct p9_qid qid;
-	uint8_t type;
-	char *name;
 	uint16_t namelen;
 	uint16_t tag;
+	uint8_t type;
 	uint8_t msgtype;
+	uint8_t readahead;
+	char *name;
 	uint8_t *cursor, *start;
 
 	/* Sanity check */
@@ -905,7 +906,8 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	p9_initcursor(cursor, data->data, P9_TREADDIR, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
 	p9_setvalue(cursor, *poffset, uint64_t);
-	p9_setvalue(cursor, p9_handle->msize - P9_ROOM_RREADDIR, uint32_t);
+	/* ROOM_READDIR is the size of the readdir reply header, and keep one more for the final 0 we write */
+	p9_setvalue(cursor, p9_handle->msize - P9_ROOM_RREADDIR - 1, uint32_t);
 	p9_setmsglen(cursor, data);
 
 	INFO_LOG(p9_handle->debug, "readdir fid %u (%s), offset %#"PRIx64, fid->fid, fid->path, *poffset);
@@ -924,11 +926,17 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 		case P9_RREADDIR:
 			p9_getvalue(cursor, count, uint32_t);
 			start = cursor;
+			readahead = '\0';
 			for (i=0; cursor < start + count; i++) {
+				if (readahead != '\0')
+					*cursor = readahead;
 				p9_getqid(cursor, qid);
 				p9_getvalue(cursor, offset, uint64_t);
 				p9_getvalue(cursor, type, uint8_t);
 				p9_getstr(cursor, namelen, name);
+				/* null terminate name to make processing easier and remember what was there */
+				readahead = *cursor;
+				*cursor = '\0';
 				rc = callback(callback_arg, fid, &qid, type, namelen, name);
 				if (rc)
 					break;
