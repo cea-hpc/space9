@@ -72,3 +72,4 @@ int path_canonicalizer(char *path);
 
 int path_basename(char *path, char *dst, size_t dst_len);
 int path_dirname(char *path, char *dst, size_t dst_len);
+void path_split(char *path, char **dirname, char **basename);

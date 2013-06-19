@@ -34,7 +34,6 @@ int p9s_ls(struct current_context *ctx, char *args) {
 
 int p9s_cd(struct current_context *ctx, char *arg) {
 	int rc;
-	char *cur, *end;
 	struct p9_fid *fid;
 
 	if (arg[0] == '/') {
@@ -46,12 +45,8 @@ int p9s_cd(struct current_context *ctx, char *arg) {
 		ctx->cwd = ctx->p9_handle->root_fid;
 	}
 
-	cur = arg;
-	while (cur) {
-		end = strchr(cur, '/');
-		if (end) 
-			end[0] = '\0';
-		rc = p9p_walk(ctx->p9_handle, ctx->cwd, cur, &fid);
+	do {
+		rc = p9p_walk(ctx->p9_handle, ctx->cwd, arg, &fid);
 		if (rc) {
 			printf("walk failed from %s to %s, error: %s (%d)\n", ctx->cwd->path, arg, strerror(rc), rc);
 			break;
@@ -71,12 +66,7 @@ int p9s_cd(struct current_context *ctx, char *arg) {
 			}
 		}
 		ctx->cwd = fid;
-
-		if (end)
-			cur = end+1;
-		else
-			cur = NULL;
-	}
+	} while( 0 );
 
 	return rc;
 }

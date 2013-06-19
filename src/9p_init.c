@@ -349,6 +349,10 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		rc = p9p_attach(p9_handle, p9_conf.uid, &p9_handle->root_fid);
 		if (rc)
 			break;
+
+		rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &p9_handle->cwd);
+		if (rc)
+			break;
 	} while (0);
 
 	if (rc) {

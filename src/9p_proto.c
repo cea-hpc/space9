@@ -271,7 +271,8 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 	uint16_t tag;
 	uint16_t nwname, nwqid;
 	uint8_t msgtype;
-	uint8_t *cursor;
+	uint8_t *cursor, *pnwname;
+	char *subpath;
 	struct p9_fid *newfid;
 
 	/* Sanity check */
@@ -301,13 +302,18 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 		nwname = 0;
 	} else {
 		INFO_LOG(p9_handle->debug, "walk from fid %u (%s) to %s, newfid %u", fid->fid, fid->path, path, newfid->fid);
-		/** @todo: this assumes wname = 1 and no / in path, fix me */
-		if (strchr(path, '/') != NULL)
-			return EINVAL;
- 
+
 		nwname = 1;
-		p9_setvalue(cursor, nwname, uint16_t);
+		p9_savepos(cursor, pnwname, uint16_t);
+		while ((subpath = strchr(path, '/')) != NULL) {
+			subpath[0] = '\0';
+			p9_setstr(cursor, subpath-path, path);
+			path = subpath+1;
+			nwname += 1;
+		}
+
 		p9_setstr(cursor, strnlen(path, MAXNAMLEN), path);
+		p9_setvalue(pnwname, nwname, uint16_t);
 	}
 
 	p9_setmsglen(cursor, data);

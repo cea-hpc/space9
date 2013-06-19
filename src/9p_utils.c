@@ -140,3 +140,17 @@ int path_dirname(char *path, char *dst, size_t dst_len) {
 
 	return strlen(dst);
 }
+
+void path_split(char *path, char **dirname, char **basename) {
+	char *slash;
+
+	slash = strrchr(path, '/');
+	if (slash == NULL) {
+		*basename = path;
+		*dirname = path + strlen(path); /* the final \0 */
+	} else {
+		slash[0] = '\0';
+		*dirname = path;
+		*basename = slash+1;
+	}
+}

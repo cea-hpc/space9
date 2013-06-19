@@ -39,7 +39,6 @@ struct thrarg {
 static void *readwritethr(void* arg) {
 	struct thrarg *thrarg = arg;
 	struct p9_handle *p9_handle = thrarg->p9_handle;
-	struct p9p_setattr attr;
 	struct p9_fid *fid;
 	struct timeval start, write, read;
 	int rc, tmprc;
@@ -61,34 +60,10 @@ static void *readwritethr(void* arg) {
 
 	do {
 		/* get a fid to write in */
-		rc = p9p_walk(p9_handle, p9_handle->root_fid, filename, &fid);
+		rc = p9l_open(p9_handle, &fid, filename, 0640 , O_TRUNC|O_RDWR, 0);
 		if (rc) {
-			/* file doesn't exist, create it */
-			rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &fid);
-			if (rc) {
-				printf("couldn't clone root fid?! error: %s (%d)\n", strerror(rc), rc);
-				break;
-			}
-			rc = p9p_lcreate(p9_handle, fid, filename, O_RDWR, 0640, 0, NULL);
-			if (rc) {
-				printf("couldn't create file %s in dir %s. error: %s (%d)\n", filename, fid->path, strerror(rc), rc);
-				break;
-			}
-		} else {
-			/* found file, open and truncate it */
-			rc = p9p_lopen(p9_handle, fid, O_RDWR, NULL);
-			if (rc) {
-				printf("couldn't open file %s. error: %s (%d)\n", fid->path, strerror(rc), rc);
-				break;
-			}
-			memset(&attr, 0, sizeof(attr));
-			attr.valid = P9_SETATTR_SIZE;
-			attr.size = 0;
-			rc = p9p_setattr(p9_handle, fid, &attr);
-			if (rc) {
-				printf("couldn't truncate file %s. error: %s (%d)\n", fid->path, strerror(rc), rc);
-				break;
-			}
+			printf("couldn't open file %s, error: %s (%d)\n", filename, strerror(rc), rc);
+			break;
 		}
 
 		/* write */

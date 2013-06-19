@@ -125,6 +125,7 @@ struct p9_handle {
 	uint32_t debug;
 	uint32_t full_debug;
 	struct p9_fid *root_fid;
+	struct p9_fid *cwd;
 };
 
 struct fs_stats {
@@ -253,5 +254,11 @@ static inline int p9c_dereg_mr(msk_data_t *data) {
 
 int p9_init(struct p9_handle **pp9_handle, char *conf_file);
 void p9_destroy(struct p9_handle **pp9_handle);
+
+
+// 9p_libc.c
+int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
+int p9l_cd(struct p9_handle *p9_handle, char *path);
+
 
 #endif
