@@ -35,6 +35,32 @@ static inline int set_size(uint32_t *val, char *unit) {
         return 0;
 }
 
+static inline int set_size64(uint64_t *val, char *unit) {
+        switch(unit[0]) {
+                case 'k':
+                case 'K':
+                        *val *= 1024L;
+                        break;
+                case 'm':
+                case 'M':
+                        *val *= 1024 * 1024L;
+                        break;
+                case 'g':
+                case 'G':
+                        *val *= 1024 * 1024 * 1024L;
+                        break;
+		case 't':
+		case 'T':
+			*val *= 1024 * 1024 * 1024 * 1024L;
+			break;
+                default:
+                        ERROR_LOG("unknown unit '%c'", unit[0]);
+                        return EINVAL;
+        }
+
+        return 0;
+}
+
 
 /**
  * @brief canonicalize path
