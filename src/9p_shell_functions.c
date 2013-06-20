@@ -6,7 +6,6 @@
 #include <mooshika.h>
 #include "9p.h"
 #include "utils.h"
-#include "9p_proto.h"
 #include "9p_shell_functions.h"
 
 static int ls_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
@@ -28,7 +27,7 @@ static int ls_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *fi
 
 static int ll_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
 	int rc;
-	struct p9p_getattr attr;
+	struct p9_getattr attr;
 	char filetype;
 	char *target;
 	msk_data_t *data = NULL;

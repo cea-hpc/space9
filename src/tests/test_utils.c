@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <inttypes.h>
 
-#include "../9p.h"
-#include "../utils.h"
+#include "9p.h"
+#include "utils.h"
 
 int main(int argc, char **argv) {
 

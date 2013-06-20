@@ -5,7 +5,6 @@
 #include <mooshika.h>
 #include "9p.h"
 #include "utils.h"
-#include "9p_proto.h"
 
 static inline int p9l_walk(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid) {
 	return p9p_walk(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid);
@@ -265,7 +264,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid) {
 	char *canon_path, *dirname, *basename;
 	struct p9_fid *fid = NULL;
-	struct p9p_setattr attr;
+	struct p9_setattr attr;
 	int rc, relative;
 
 	canon_path = malloc(strlen(path)+1);

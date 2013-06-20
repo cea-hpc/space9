@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <mooshika.h>
 #include "9p.h"
-#include "9p_proto.h"
 #include "9p_proto_internals.h"
 #include "utils.h"
 
@@ -251,6 +250,69 @@ int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) 
 }
 
 
+/**
+ * @brief Flush is used to invalidate a tag, if the reply isn't needed anymore.
+ *
+ *
+ * size[4] Tflush tag[2] oldtag[2]
+ * size[4] Rflush tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    oldtag:	the tag to invalidate
+ * @return 0 on success, errno value on error.
+ */
+int p9p_flush(struct p9_handle *p9_handle, uint16_t oldtag) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TFLUSH, tag);
+	p9_setvalue(cursor, oldtag, uint16_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "flush on tag %u", oldtag);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RFLUSH:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TFLUSH, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
+
 
 /**
  * @brief Creates a new fid from path relative to a fid, or clone the said fid if path is NULL
@@ -437,6 +499,72 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TCLUNK, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+	/* fid is invalid anyway */
+	p9c_putfid(p9_handle, fid);
+
+	return rc;
+}
+
+/**
+ * @brief Clunk a fid and unlinks the file associated with it.
+ * Note that the fid is clunked even on error.
+ *
+ *
+ * size[4] Tremove tag[2] fid[4]
+ * size[4] Rremove tag[2]
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    fid:		fid to remove
+ * @return 0 on success, errno value on error.
+ */
+int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TREMOVE, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug, "remove on fid %u (%s)", fid->fid, fid->path);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RREMOVE:
+			/* nothing else */
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TREMOVE, tag);
 			rc = EIO;
 	}
 
@@ -1629,7 +1757,7 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
  * @param
  * @return 0 on success, errno value on error.
  */
-int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_getattr *attr) {
+int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -1718,7 +1846,7 @@ int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_geta
  * @param
  * @return 0 on success, errno value on error.
  */
-int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9p_setattr *attr) {
+int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_setattr *attr) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;

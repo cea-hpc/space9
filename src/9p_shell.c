@@ -15,7 +15,6 @@
 #endif
 
 #include "9p.h"
-#include "9p_proto.h"
 #include "utils.h"
 #include "settings.h"
 
