@@ -124,6 +124,7 @@ struct p9_handle {
 	uint32_t msize;
 	uint32_t debug;
 	uint32_t full_debug;
+	uint32_t umask;
 	struct p9_fid *root_fid;
 	struct p9_fid *cwd;
 };
@@ -259,6 +260,10 @@ void p9_destroy(struct p9_handle **pp9_handle);
 // 9p_libc.c
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
 int p9l_cd(struct p9_handle *p9_handle, char *path);
-
+int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
+int p9l_rm(struct p9_handle *p9_handle, char *path);
+int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
+int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
+int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
 
 #endif

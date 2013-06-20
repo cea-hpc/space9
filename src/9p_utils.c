@@ -110,19 +110,15 @@ int path_canonicalizer(char *path) {
 }
 
 
-int path_basename(char *path, char *dst, size_t dst_len) {
+void path_basename(char *path, char **basename) {
 	char *slash;
 
 	slash = strrchr(path, '/');
 	if (slash == NULL) {
-		slash = path;
+		*basename = path;
 	} else {
-		slash += 1;
+		*basename = slash + 1;
 	}
-
-	strncpy(dst, slash, dst_len);
-
-	return strlen(dst);
 }
 
 
@@ -141,8 +137,11 @@ int path_dirname(char *path, char *dst, size_t dst_len) {
 	return strlen(dst);
 }
 
-void path_split(char *path, char **dirname, char **basename) {
+int path_split(char *path, char **dirname, char **basename) {
 	char *slash;
+	int relative;
+
+	relative = (path[0] != '/');
 
 	slash = strrchr(path, '/');
 	if (slash == NULL) {
@@ -153,4 +152,6 @@ void path_split(char *path, char **dirname, char **basename) {
 		*dirname = path;
 		*basename = slash+1;
 	}
+
+	return relative;
 }

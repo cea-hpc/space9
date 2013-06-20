@@ -242,6 +242,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->msize = p9_conf.msize;
 		p9_handle->max_fid = p9_conf.max_fid;
 		p9_handle->max_tag = (p9_conf.max_tag > 65535 ? 65535 : p9_conf.max_tag);
+		p9_handle->umask = umask(0);
+		umask(p9_handle->umask);
 
 		/* cache our own hostname - p9_ahndle->hostname is MAX_CANON+1 long*/
 		p9_handle->hostname[MAX_CANON] = '\0';

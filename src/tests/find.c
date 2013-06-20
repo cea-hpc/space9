@@ -31,7 +31,7 @@ struct cb_arg {
 	struct nlist *tail;
 };
 
-static int rd_cb(void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
+static int rd_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
 	struct cb_arg *cb_arg = arg;
 	struct nlist *n;
 

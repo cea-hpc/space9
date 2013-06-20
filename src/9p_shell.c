@@ -42,9 +42,10 @@ static struct functions functions[] = {
 	{ "cat", "cat <file>: cat files...", p9s_cat },
 	{ "xwrite", "xwrite <file> <content>: writes content into file (truncates)", p9s_xwrite },
 	{ "mkdir", "mkdir <dir>: creates directory", p9s_mkdir },
-	{ "rm", "rm <file>: removes file, only in current directory atm", p9s_rm },
+	{ "rm", "rm <file>: removes file", p9s_rm },
 	{ "mv", "mv <from> <to>: moves from to to, only cwd/no slash allowed atm", p9s_mv },
-	{ "rmdir", "soon", p9s_mkdir },
+	{ "rmdir", "rm <dir>: removes a dir. Actually rm.", p9s_rm },
+	{ "ln", "ln [-s] target [linkname]: links or symlinks", p9s_ln },
 	{ NULL, NULL, NULL }
 };
 
@@ -144,8 +145,10 @@ int main() {
 			if (strncmp(fn->name, line, len))
 				continue;
 
-			if (line[len] == '\0' || line[len] == ' ')
-				rc = fn->func(&ctx, line + strlen(fn->name) + 1);
+			if (line[len] == ' ')
+				rc = fn->func(&ctx, line + len + 1);
+			else if (line[len] == '\0')
+				rc = fn->func(&ctx, line + len);
 			else /* wasn't really this command */
 				continue;
 

@@ -9,7 +9,7 @@
 
 int main(int argc, char **argv) {
 
-	char path[MAXPATHLEN];
+	char path[MAXPATHLEN], *dirname, *basename;
 	int i;
 
 	if (argc > 1) {
@@ -19,6 +19,8 @@ int main(int argc, char **argv) {
 	}
 	i = path_canonicalizer(path);
 	printf("i: %i, path: %s\n", i, path);
+	i = path_split(path, &dirname, &basename);
+	printf("relative: %i, dirname: %s, basename: %s\n", i, dirname, basename);
 
 	return 0;
 }

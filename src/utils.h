@@ -70,6 +70,6 @@ static inline int set_size64(uint64_t *val, char *unit) {
  */
 int path_canonicalizer(char *path);
 
-int path_basename(char *path, char *dst, size_t dst_len);
 int path_dirname(char *path, char *dst, size_t dst_len);
-void path_split(char *path, char **dirname, char **basename);
+void path_basename(char *path, char **basename);
+int path_split(char *path, char **dirname, char **basename);

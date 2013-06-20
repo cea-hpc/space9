@@ -303,16 +303,22 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 	} else {
 		INFO_LOG(p9_handle->debug, "walk from fid %u (%s) to %s, newfid %u", fid->fid, fid->path, path, newfid->fid);
 
-		nwname = 1;
+		nwname = 0;
 		p9_savepos(cursor, pnwname, uint16_t);
 		while ((subpath = strchr(path, '/')) != NULL) {
 			subpath[0] = '\0';
-			p9_setstr(cursor, subpath-path, path);
+			if (path != subpath) {
+				p9_setstr(cursor, subpath-path, path);
+				nwname += 1;
+			}
+			subpath[0] = '/';
 			path = subpath+1;
-			nwname += 1;
 		}
 
-		p9_setstr(cursor, strnlen(path, MAXNAMLEN), path);
+		if (strnlen(path,MAXNAMLEN) > 0) {
+			p9_setstr(cursor, strnlen(path, MAXNAMLEN), path);
+			nwname += 1;
+		}
 		p9_setvalue(pnwname, nwname, uint16_t);
 	}
 
@@ -491,6 +497,7 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLOPEN:
+			fid->open = 1;
 			p9_getqid(cursor, fid->qid);
 			if (iounit)
 				p9_getvalue(cursor, *iounit, uint32_t);
@@ -570,6 +577,8 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLCREATE:
+			strncat(fid->path, name, MAXPATHLEN - strlen(fid->path));
+			fid->open = 1;
 			p9_getqid(cursor, fid->qid);
 			if (iounit)
 				p9_getvalue(cursor, *iounit, uint32_t);
@@ -820,7 +829,7 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL)
+	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL || fid->open == 0)
 		return EINVAL;
 
 
@@ -988,7 +997,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	uint8_t *cursor, *start;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL)
+	if (p9_handle == NULL || fid == NULL || fid->open == 0)
 		return -EINVAL;
 
 	tag = 0;
@@ -1030,7 +1039,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 				/* null terminate name to make processing easier and remember what was there */
 				readahead = *cursor;
 				*cursor = '\0';
-				rc = callback(callback_arg, fid, &qid, type, namelen, name);
+				rc = callback(callback_arg, p9_handle, fid, &qid, type, namelen, name);
 				if (rc)
 					break;
 			}
@@ -1084,7 +1093,7 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0)
+	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0 || fid->open == 0)
 		return -EINVAL;
 
 
@@ -1192,7 +1201,7 @@ int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset,
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || data == NULL || data->size == 0)
+	if (p9_handle == NULL || fid == NULL || data == NULL || data->size == 0 || fid->open == 0)
 		return -EINVAL;
 
 	tag = 0;
@@ -1268,7 +1277,7 @@ int p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || buf == NULL || count == 0)
+	if (p9_handle == NULL || fid == NULL || buf == NULL || count == 0 || fid->open == 0)
 		return -EINVAL;
 
 	tag = 0;
@@ -1839,12 +1848,12 @@ int p9p_fsync(struct p9_handle *p9_handle, struct p9_fid *fid) {
  * size[4] Rlink tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    dfid:		fid of the directory where the new link will be created
  * @param [IN]    fid:		link target
+ * @param [IN]    dfid:		fid of the directory where the new link will be created
  * @param [IN]    name:		name of the link
  * @return 0 on success, errno value on error.
  */
-int p9p_link(struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_fid *fid, char *name) {
+int p9p_link(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfid, char *name) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;

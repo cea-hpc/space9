@@ -451,8 +451,8 @@ int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name,
 
 /* size[4] Rreaddir tag[2] count[4] data[count] */
 #define P9_ROOM_RREADDIR (P9_STD_HDR_SIZE + 4 )
-typedef int (*p9p_readdir_cb) (void *arg, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type,
-		uint16_t namelen, char *name);
+typedef int (*p9p_readdir_cb) (void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid,
+		uint8_t type, uint16_t namelen, char *name);
 /**
  * @brief readdir with callback on each entry
  *
@@ -538,12 +538,12 @@ int p9p_getlock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t *ptype,
  * size[4] Rlink tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    dfid:		fid of the directory where the new link will be created
  * @param [IN]    fid:		link target
+ * @param [IN]    dfid:		fid of the directory where the new link will be created
  * @param [IN]    name:		name of the link
  * @return 0 on success, errno value on error.
  */
-int p9p_link(struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_fid *fid, char *name);
+int p9p_link(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfid, char *name);
 
 /**
  * @brief mkdir
