@@ -13,6 +13,7 @@
 #include "9p_proto_internals.h"
 #include "utils.h"
 
+static const char version_str[] = "9P2000.L";
 /**
  * @brief Must be used first uppon connexion:
  * It is needed for client/server to agree on a msize, and to define the protocol version used (always "9P2000.L")
@@ -47,7 +48,7 @@ int p9p_version(struct p9_handle *p9_handle) {
 
 	p9_initcursor(cursor, data->data, P9_TVERSION, P9_NOTAG);
 	p9_setvalue(cursor, p9_handle->msize, uint32_t);
-	p9_setstr(cursor, 8 /*strlen("9P2000.L")*/, "9P2000.L");
+	p9_setstr(cursor, strlen(version_str), version_str);
 	p9_setmsglen(cursor, data);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
@@ -64,7 +65,7 @@ int p9p_version(struct p9_handle *p9_handle) {
 		case P9_RVERSION:
 			p9_getvalue(cursor, p9_handle->msize, uint32_t);
 			p9_getstr(cursor, len, version);
-			if (strncmp(version, "9P2000.L", len)) {
+			if (strncmp(version, version_str, len)) {
 				rc = EINVAL;
 			}
 			break;
@@ -742,7 +743,7 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
  * @return 0 on success, errno value on error.
  */
 int p9p_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, char *symtgt, uint32_t gid,
-               struct p9_qid *qid) {
+                struct p9_qid *qid) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -753,6 +754,8 @@ int p9p_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, ch
 	if (p9_handle == NULL || name == NULL || dfid == NULL || strchr(name, '/') != NULL || symtgt == NULL)
 		return EINVAL;
 
+	if (P9_ROOM_TSYMLINK + strlen(name) + strlen(symtgt) > p9_handle->msize)
+		return ERANGE;
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &data, &tag);
@@ -765,7 +768,6 @@ int p9p_symlink(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, ch
 	p9_setstr(cursor, strlen(symtgt), symtgt);
 	p9_setvalue(cursor, gid, uint32_t);
 	p9_setmsglen(cursor, data);
-	/** @todo FIXME make sure this fits before writing it... */
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1213,8 +1215,8 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char **zbuf, msk_data_t **pdata) {
- 	int rc;
+ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char **zbuf, msk_data_t **pdata) {
+	ssize_t rc;
 	msk_data_t *data;
 	uint16_t tag;
 	uint8_t msgtype;
@@ -1239,7 +1241,7 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
 	p9_setvalue(cursor, count, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "read fid %u (%s), offset %"PRIu64", count %u", fid->fid, fid->path, offset, count);
+	INFO_LOG(p9_handle->debug, "read fid %u (%s), offset %"PRIu64", count %zi", fid->fid, fid->path, offset, count);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1289,10 +1291,10 @@ int p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, 
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof
  */
-int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *buf) {
+ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char *buf) {
 	char *zbuf;
 	msk_data_t *data;
-	int rc;
+	ssize_t rc;
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || buf == NULL)

@@ -412,3 +412,6 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 	}
 	return rc;
 }
+
+ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
+ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
