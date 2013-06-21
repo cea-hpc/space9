@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <inttypes.h>
 
 #include <mooshika.h>
 #include "9p.h"
@@ -24,6 +25,10 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 	char *canon_path;
 	struct p9_fid *fid;
 	int rc;
+
+	/* sanity checks */
+	if (p9_handle == NULL || path == NULL)
+		return EINVAL;
 
 	canon_path = malloc(strlen(path)+1);
 	if (!canon_path)
@@ -79,6 +84,10 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 	struct p9_fid *fid = NULL;
 	int rc, relative;
 
+	/* sanity checks */
+	if (p9_handle == NULL || path == NULL)
+		return EINVAL;
+
 	canon_path = malloc(strlen(path)+1);
 	if (!canon_path)
 		return ENOMEM;
@@ -105,6 +114,10 @@ int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname) {
 	char *canon_path, *dirname, *basename;
 	struct p9_fid *fid = NULL;
 	int rc, relative;
+
+	/* sanity checks */
+	if (p9_handle == NULL || target == NULL || linkname == NULL)
+		return EINVAL;
 
 	canon_path = malloc(strlen(linkname)+1);
 	if (!canon_path)
@@ -133,6 +146,10 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 	char *linkname_canon_path, *linkname_dirname, *linkname_basename;
 	struct p9_fid *target_fid = NULL, *linkname_fid = NULL;
 	int rc, linkname_relative;
+
+	/* sanity checks */
+	if (p9_handle == NULL || target == NULL || linkname == NULL)
+		return EINVAL;
 
 	target_canon_path = malloc(strlen(target)+1);
 	linkname_canon_path = malloc(strlen(linkname)+1);
@@ -197,6 +214,10 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 	char *dst_canon_path, *dst_dirname, *dst_basename;
 	struct p9_fid *src_fid = NULL, *dst_fid = NULL;
 	int rc, src_relative, dst_relative;
+
+	/* sanity checks */
+	if (p9_handle == NULL || src == NULL || dst == NULL)
+		return EINVAL;
 
 	src_canon_path = malloc(strlen(src)+1);
 	dst_canon_path = malloc(strlen(dst)+1);
@@ -267,6 +288,10 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	struct p9_setattr attr;
 	int rc, relative;
 
+	/* sanity checks */
+	if (p9_handle == NULL || pfid == NULL || path == NULL)
+		return EINVAL;
+
 	canon_path = malloc(strlen(path)+1);
 	if (!canon_path)
 		return ENOMEM;
@@ -318,5 +343,72 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 		*pfid = fid;
 
 	free(canon_path);
+	return rc;
+}
+
+int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr);
+/* flags = 0 or AT_SYMLINK_NOFOLLOW */
+int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags);
+
+
+ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset) {
+	ssize_t rc;
+	msk_data_t data;
+	size_t sent = 0;
+
+	/* sanity checks */
+	if (p9_handle == NULL || fid == NULL || fid->open == 0)
+		return EINVAL;
+
+	if (count < 512*1024) { /* copy the buffer if it's less than 500k */
+		do {
+			rc = p9p_write(p9_handle, fid, offset, count - sent, buffer + sent);
+			if (rc <= 0)
+				break;
+			sent += rc;
+		} while (sent < count);
+	} else { /* register the whole buffer and send it */
+		data.data = buffer;
+		data.size = count;
+		data.max_size = count;
+		p9c_reg_mr(p9_handle, &data);
+		do {
+			data.size = count - sent;
+			data.data = buffer + sent;
+			rc = p9pz_write(p9_handle, fid, offset, &data);
+			if (rc <= 0)
+				break;
+			offset += rc;
+		} while (sent < count);
+		p9c_dereg_mr(&data);
+	}
+	if (rc < 0) {
+		INFO_LOG(p9_handle->debug, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, offset, strerror(-rc), -rc);
+	} else {
+		rc = sent;
+	}
+
+	return rc;	
+}
+
+ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset) {
+	ssize_t rc = 0, total = 0;
+	int i;
+
+	if (iovcnt < 0) {
+		rc = EINVAL;
+	}
+
+	for (i = 0; i < iovcnt; i++) {
+		rc = p9l_write(p9_handle, fid, iov[i].iov_base, iov[i].iov_len, offset);
+		if (rc < 0)
+			break;
+		if (rc < iov[i].iov_len) {
+			rc += total;
+			break;
+		}
+		total += rc;
+	}
 	return rc;
 }

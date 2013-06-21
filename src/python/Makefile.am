@@ -33,7 +33,7 @@ clean-local:
 	rm -rf build
 
 space9_wrap.c space9.py:	$(SWIG_INTERFACE)
-	$(SWIG) -python -I$(top_srcdir)/src -o space9_wrap.c -outdir . $(srcdir)/$(SWIG_INTERFACE)
+	$(SWIG) -python -I$(top_srcdir)/include -I$(top_srcdir)/src -o space9_wrap.c -outdir . $(srcdir)/$(SWIG_INTERFACE)
 
 endif # ENABLE_PYTHON_BINDING
 endif # HAVE_SWIG

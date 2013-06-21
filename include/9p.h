@@ -268,6 +268,7 @@ int p9l_rm(struct p9_handle *p9_handle, char *path);
 int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
+int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
 
 // 9p_shell_functions.c - used for python bindings
 
@@ -418,7 +419,7 @@ int p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, u
  * @param [IN]    data:		msk_registered msk_data pointer here
  * @return number of bytes written if >= 0, -errno on error.
  */
-int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, msk_data_t *data);
+ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, msk_data_t *data);
 
 /**
  * @brief Write to a file.
@@ -435,7 +436,7 @@ int p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset,
  * @param [IN]    buffer:	data to send
  * @return number of bytes written if >= 0, -errno on error
  */
-int p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, uint32_t count, char *data);
+ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char *data);
 
 /**
  * @brief Clunk a fid.

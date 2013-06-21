@@ -69,32 +69,36 @@ dnl =================
 dnl Checks for Python
 dnl =================
 AM_PATH_PYTHON([],
-               [has_python=yes],
-               [AC_MSG_WARN([Python not found. Python is required to build python binding. Python can be obtained from http://www.python.org])])
+               [has_python=yes])
 
-AC_ARG_ENABLE([python-binding],
+if test "x$has_python" == "xyes"; then
+  AC_CACHE_CHECK([for $am_display_PYTHON includes directory],
+      [adl_cv_python_inc],
+      [adl_cv_python_inc=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_python_inc()" 2>/dev/null`])
+  AC_SUBST([PYTHON_CPPFLAGS], [-I$adl_cv_python_inc])
+  AC_CHECK_HEADERS("$adl_cv_python_inc/Python.h", , [has_python=no])
+fi
+
+AX_PKG_SWIG
+
+AC_ARG_ENABLE([python-bindings],
               AS_HELP_STRING([--enable-python-binding],
                              [build python binding (default=auto)]))
 
-if test "x$has_python" == "xyes"; then
+if test "x$has_python" == "xyes" && test "x$SWIG" != "x"; then
   if test "x$enable_python_binding" == "x"; then
     enable_python_binding=yes
   fi
 else
   if test "x$enable_python_binding" == "xyes"; then
-    AC_MSG_ERROR([Need python for python-bindings])
+    AC_MSG_ERROR([Need python-devel and swig for python-bindings])
   fi
 fi
 AM_CONDITIONAL(ENABLE_PYTHON_BINDING, test "x$enable_python_binding" == "xyes")
 
-AC_CACHE_CHECK([for $am_display_PYTHON includes directory],
-    [adl_cv_python_inc],
-    [adl_cv_python_inc=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_python_inc()" 2>/dev/null`])
-AC_SUBST([PYTHON_CPPFLAGS], [-I$adl_cv_python_inc])
-AX_PKG_SWIG
 AM_CONDITIONAL(HAVE_SWIG, test "x$SWIG" != "x")
 
-#for exporting to spec file
+# for exporting to spec file
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_HEADERS([include/config.h])
