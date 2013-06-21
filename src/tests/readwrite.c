@@ -84,7 +84,7 @@ static void *readwritethr(void* arg) {
 				break;
 			offset += rc;
 		} while (rc > 0 && thrarg->totalsize > offset);
-		p9c_dereg_mr(data);
+		p9c_dereg_mr(p9_handle, data);
 		free(data);
 		if (rc < 0) {
 			rc = -rc;

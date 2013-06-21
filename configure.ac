@@ -54,16 +54,16 @@ AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR(missing mooshika headers)])
 
 
 #don't add -lmooshika if tcp emulation is used
-AC_ARG_ENABLE(tcp,
-	AC_HELP_STRING([--enable-tcp], [Use TCP emulation for mooshika instead of rdma (disabled)]))
+AC_ARG_ENABLE(mooshika,
+	AC_HELP_STRING([--disable-mooshika], [don't use mooshika]))
 
-if test "x$enable_tcp" != "xyes" ; then
-	AC_SEARCH_LIBS([msk_init], [mooshika], [], [
+if test "x$enable_mooshika" != "xno" ; then
+	AC_SEARCH_LIBS([msk_init], [mooshika], [enable_moosika=yes; AC_DEFINE([HAVE_MOOSHIKA], [1], [Defined to use mooshika])], [
 		AC_MSG_ERROR([unable to find mooshika])
 	])
 fi
 
-AM_CONDITIONAL(ENABLE_TCP, test "x$enable_tcp" == "xyes")
+AM_CONDITIONAL(HAVE_MOOSHIKA, test "x$enable_mooshika" == "xyes")
 
 dnl =================
 dnl Checks for Python

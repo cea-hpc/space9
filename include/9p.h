@@ -95,15 +95,27 @@ struct p9_tag {
 	msk_data_t *rdata;
 };
 
+struct p9_net_ops {
+	int (*init)(msk_trans_t **ptrans, msk_trans_attr_t *attr);
+	void (*destroy_trans)(msk_trans_t **ptrans);
+
+	int (*connect)(msk_trans_t *trans);
+	int (*finalize_connect)(msk_trans_t *trans);
+
+	struct ibv_mr *(*reg_mr)(msk_trans_t *trans, void *memaddr, size_t size, int access);
+	int (*dereg_mr)(struct ibv_mr *mr);
+
+	int (*post_n_recv)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
+	int (*post_n_send)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
+
+};
+
 struct p9_handle {
 	uint16_t max_tag;
 	char aname[MAXPATHLEN];
 	char hostname[MAX_CANON+1];
 	uint8_t *rdmabuf;
-	enum p9_net_type {
-		P9_NET_MSK,
-		P9_NET_TCP,
-	} net_type;
+	struct p9_net_ops *net_ops;
 	msk_trans_t *trans;
 	struct ibv_mr *mr;
 	msk_data_t *rdata;
@@ -244,7 +256,7 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid);
 
 static inline int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
-	data->mr = msk_reg_mr(p9_handle->trans, data->data, data->max_size, IBV_ACCESS_LOCAL_WRITE);
+	data->mr = p9_handle->net_ops->reg_mr(p9_handle->trans, data->data, data->max_size, IBV_ACCESS_LOCAL_WRITE);
 	if (data->mr == NULL) {
 		return -1;
 	}
@@ -252,8 +264,8 @@ static inline int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
 	return 0;
 }
 
-static inline int p9c_dereg_mr(msk_data_t *data) {
-	return msk_dereg_mr(data->mr);
+static inline int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
+	return p9_handle->net_ops->dereg_mr(data->mr);
 }
 
 

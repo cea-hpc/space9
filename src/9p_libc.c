@@ -381,7 +381,7 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 				break;
 			offset += rc;
 		} while (sent < count);
-		p9c_dereg_mr(&data);
+		p9c_dereg_mr(p9_handle, &data);
 	}
 	if (rc < 0) {
 		INFO_LOG(p9_handle->debug, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, offset, strerror(-rc), -rc);

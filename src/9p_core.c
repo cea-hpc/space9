@@ -73,11 +73,7 @@ int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag)
 
 	INFO_LOG(p9_handle->full_debug, "send request for tag %u", tag);
 
-	if (data->next != NULL) {
-		msk_post_n_send(p9_handle->trans, data, 2, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
-	} else {
-		msk_post_send(p9_handle->trans, data, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
-	}
+	p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 
 	return 0;
 }
@@ -147,7 +143,7 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
 int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data) {
 	int rc;
 
-	rc = msk_post_recv(p9_handle->trans, data, p9_recv_cb, p9_recv_err_cb, NULL);
+	rc = p9_handle->net_ops->post_n_recv(p9_handle->trans, data, 1, p9_recv_cb, p9_recv_err_cb, NULL);
 	if (rc) {
 		ERROR_LOG("Could not post recv buffer %p: %s (%d)", data, strerror(rc), rc);
 		rc = EIO;

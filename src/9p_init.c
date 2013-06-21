@@ -1,3 +1,7 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -7,6 +11,7 @@
 #include <unistd.h>     // gethostname
 #include <mooshika.h>
 #include "9p.h"
+#include "9p_tcp.h"
 #include "utils.h"
 #include "settings.h"
 
@@ -19,6 +24,7 @@ struct p9_conf {
 	uint32_t msize;
 	uint32_t debug;
 	uint32_t full_debug;
+	struct p9_net_ops *net_ops;
 	struct msk_trans_attr trans_attr;
 };
 
@@ -30,7 +36,8 @@ enum conftype {
 	PORT,
 	PORT6,
 	STRING,
-	SIZE
+	SIZE,
+	NET_TYPE
 };
 
 struct conf {
@@ -40,6 +47,32 @@ struct conf {
 };
 
 #define offsetof(type, member)  __builtin_offsetof (type, member)
+
+#if HAVE_MOOSHIKA
+static char *p9_net_rdma_s = "rdma";
+static struct p9_net_ops p9_rdma_ops = {
+	.init = msk_init,
+	.destroy_trans = msk_destroy_trans,
+	.connect = msk_connect,
+	.finalize_connect = msk_finalize_connect,
+	.reg_mr = msk_reg_mr,
+	.dereg_mr = msk_dereg_mr,
+	.post_n_send = msk_post_n_send,
+	.post_n_recv = msk_post_n_recv,
+};
+#endif
+
+static char *p9_net_tcp_s = "tcp";
+static struct p9_net_ops p9_tcp_ops = {
+	.init = msk_tcp_init,
+	.destroy_trans = msk_tcp_destroy_trans,
+	.connect = msk_tcp_connect,
+	.finalize_connect = msk_tcp_finalize_connect,
+	.reg_mr = msk_tcp_reg_mr,
+	.dereg_mr = msk_tcp_dereg_mr,
+	.post_n_send = msk_tcp_post_n_send,
+	.post_n_recv = msk_tcp_post_n_recv,
+};
 
 static struct conf conf_array[] = {
 	{ "server", IP, 0 },
@@ -57,6 +90,7 @@ static struct conf conf_array[] = {
 	{ "uid", UINT, offsetof(struct p9_conf, uid) },
 	{ "max_fid", UINT, offsetof(struct p9_conf, max_fid) },
 	{ "max_tag", UINT, offsetof(struct p9_conf, max_tag) },
+	{ "net_type", NET_TYPE, 0 },
 	{ NULL, 0, 0 }
 };
 
@@ -86,6 +120,11 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	p9_conf->msize = DEFAULT_MSIZE;
 	p9_conf->max_fid = DEFAULT_MAX_FID;
 	p9_conf->max_tag = DEFAULT_MAX_TAG;
+#if HAVE_MOOSHIKA
+	p9_conf->net_ops = &p9_rdma_ops;
+#else
+	p9_conf->net_ops = &p9_tcp_ops;
+#endif
 
 	while (fgets(line, 2*MAXPATHLEN, fd)) {
 		// skip comments
@@ -93,7 +132,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 			continue;
 
 		for (i=0; conf_array[i].token != NULL; i++) {
-			if (strncmp(conf_array[i].token, line, strlen(conf_array[i].token)))
+			if (strncasecmp(conf_array[i].token, line, strlen(conf_array[i].token)))
 				continue;
 
 			// we have a match
@@ -154,6 +193,21 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(buf_i);
 					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, buf_i);
 					break;
+				case NET_TYPE:
+					if (sscanf(line, "%*s = %s", buf_s) != 1) {
+						ERROR_LOG("scanf error on line: %s", line);
+						return EINVAL;
+					}
+					if (strncasecmp(buf_s, p9_net_tcp_s, strlen(p9_net_tcp_s)) == 0) {
+						p9_conf->net_ops = &p9_tcp_ops;
+#if HAVE_MOOSHIKA
+					} else if (strncasecmp(buf_s, p9_net_rdma_s, strlen(p9_net_rdma_s)) == 0) {
+						p9_conf->net_ops = &p9_rdma_ops;
+#endif
+					} else {
+						ERROR_LOG("Unknown net type: %s. Assuming default.", buf_s);
+					}
+					break;
 				default:
 					ERROR_LOG("token %s not yet implemented", conf_array[i].token);
 			}
@@ -201,7 +255,7 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 			p9_handle->wdata = NULL;
 		}
 		if (p9_handle->rdata) {
-			msk_dereg_mr(p9_handle->rdata[0].mr);
+			p9_handle->net_ops->dereg_mr(p9_handle->rdata[0].mr);
 			free(p9_handle->rdata);
 			p9_handle->rdata = NULL;
 		}
@@ -245,6 +299,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->msize = p9_conf.msize;
 		p9_handle->max_fid = p9_conf.max_fid;
 		p9_handle->max_tag = (p9_conf.max_tag > 65535 ? 65535 : p9_conf.max_tag);
+		p9_handle->net_ops = p9_conf.net_ops;
 		p9_handle->umask = umask(0);
 		umask(p9_handle->umask);
 
@@ -265,7 +320,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		freeaddrinfo(info);
 
 		/* mooshika init */
-		rc = msk_init(&p9_handle->trans, &p9_conf.trans_attr);
+		rc = p9_handle->net_ops->init(&p9_handle->trans, &p9_conf.trans_attr);
 		if (rc) {
 			ERROR_LOG("msk_init failed: %s (%d)", strerror(rc), rc);
 			break;
@@ -273,7 +328,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 
 		p9_handle->trans->private_data = p9_handle;
 
-		rc = msk_connect(p9_handle->trans);
+		rc = p9_handle->net_ops->connect(p9_handle->trans);
 		if (rc) {
 			ERROR_LOG("msk_connect failed: %s (%d)", strerror(rc), rc);
 			break;
@@ -290,7 +345,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			break;
 		}
 
-		mr = msk_reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
+		mr = p9_handle->net_ops->reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
 		if (mr == NULL) {
 			ERROR_LOG("Could not register memory buffer");
 			rc = EIO;
@@ -303,7 +358,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_conf.msize;
 			p9_handle->rdata[i].mr = mr;
 			p9_handle->wdata[i].mr = mr;
-			rc = msk_post_recv(p9_handle->trans, &p9_handle->rdata[i], p9_recv_cb, p9_recv_err_cb, NULL);
+			rc = p9_handle->net_ops->post_n_recv(p9_handle->trans, &p9_handle->rdata[i], 1, p9_recv_cb, p9_recv_err_cb, NULL);
 			if (rc) {
 				ERROR_LOG("Could not post recv buffer %i: %s (%d)", i, strerror(rc), rc);
 				rc = EIO;
@@ -343,7 +398,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		pthread_mutex_init(&p9_handle->credit_lock, NULL);
 		pthread_cond_init(&p9_handle->credit_cond, NULL);
 
-		rc = msk_finalize_connect(p9_handle->trans);
+		rc = p9_handle->net_ops->finalize_connect(p9_handle->trans);
 		if (rc)
 			break;
 

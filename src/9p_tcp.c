@@ -90,7 +90,7 @@ struct msk_internals {
 static struct msk_internals *internals;
 
 
-void __attribute__ ((constructor)) msk_internals_init(void) {
+void __attribute__ ((constructor)) msk_tcp_internals_init(void) {
 	internals = malloc(sizeof(*internals));
 	if (!internals) {
 		ERROR_LOG("Out of memory");
@@ -102,7 +102,7 @@ void __attribute__ ((constructor)) msk_internals_init(void) {
 	pthread_mutex_init(&internals->lock, NULL);
 }
 
-void __attribute__ ((destructor)) msk_internals_fini(void) {
+void __attribute__ ((destructor)) msk_tcp_internals_fini(void) {
 
 	if (internals) {
 		internals->run_threads = 0;
@@ -119,10 +119,10 @@ void __attribute__ ((destructor)) msk_internals_fini(void) {
 }
 
 /**
- * msk_create_thread: Simple wrapper around pthread_create
+ * msk_tcp_create_thread: Simple wrapper around pthread_create
  */
 #define THREAD_STACK_SIZE 2116488
-static inline int msk_create_thread(pthread_t *thrid, void *(*start_routine)(void*), void *arg) {
+static inline int msk_tcp_create_thread(pthread_t *thrid, void *(*start_routine)(void*), void *arg) {
 
 	pthread_attr_t attr;
 	int ret;
@@ -151,7 +151,7 @@ static inline int msk_create_thread(pthread_t *thrid, void *(*start_routine)(voi
 	return pthread_create(thrid, &attr, start_routine, arg);
 }
 
-static void *msk_recv_thread(void *arg) {
+static void *msk_tcp_recv_thread(void *arg) {
 	msk_trans_t *trans = arg;
 	char *junk;
 	int rc, i;
@@ -230,10 +230,10 @@ static void *msk_recv_thread(void *arg) {
 	pthread_exit(NULL);
 }
 
-void msk_destroy_trans(msk_trans_t **ptrans) {
+void msk_tcp_destroy_trans(msk_trans_t **ptrans) {
 }
 
-int msk_setup_buffers(msk_trans_t *trans) {
+int msk_tcp_setup_buffers(msk_trans_t *trans) {
 	trans->recv_buf = malloc(trans->rq_depth * sizeof(struct msk_ctx));
 	if (trans->recv_buf == NULL)
 		return ENOMEM;
@@ -241,7 +241,7 @@ int msk_setup_buffers(msk_trans_t *trans) {
 	return 0;
 }
 
-int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
+int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 	int ret;
 
 	msk_trans_t *trans;
@@ -316,7 +316,7 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 	} while (0);
 
 	if (ret) {
-		msk_destroy_trans(&trans);
+		msk_tcp_destroy_trans(&trans);
 		return ret;
 	}
 
@@ -326,7 +326,7 @@ int msk_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 }
 
 // server specific:
-int msk_bind_server(msk_trans_t *trans) {
+int msk_tcp_bind_server(msk_trans_t *trans) {
 	int rc;
 
 	do {
@@ -376,7 +376,7 @@ static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	memset(&trans->ctx_cond, 0, sizeof(pthread_cond_t));
 
 	do {
-		rc = msk_setup_buffers(trans);
+		rc = msk_tcp_setup_buffers(trans);
 		if (rc) {
 			ERROR_LOG("Couldn't setup buffers");
 			break;
@@ -404,14 +404,14 @@ static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	} while (0);
 
 	if (rc) {
-		msk_destroy_trans(&trans);
+		msk_tcp_destroy_trans(&trans);
 		trans = NULL;
 	}
 
 	return trans;
 }
 
-msk_trans_t *msk_accept_one_wait(msk_trans_t *trans, int msleep) {
+msk_trans_t *msk_tcp_accept_one_wait(msk_trans_t *trans, int msleep) {
 	msk_trans_t *child_trans;
 	socklen_t len = sizeof(sockaddr_union_t);
 
@@ -423,7 +423,7 @@ msk_trans_t *msk_accept_one_wait(msk_trans_t *trans, int msleep) {
 	tcpt(child_trans)->sockfd = accept(tcpt(trans)->sockfd, &tcpt(child_trans)->peer_sa.sa, &len);
 
 	if (tcpt(child_trans)->sockfd == -1) {
-		msk_destroy_trans(&child_trans);
+		msk_tcp_destroy_trans(&child_trans);
 		return NULL;
 	}
 
@@ -431,27 +431,27 @@ msk_trans_t *msk_accept_one_wait(msk_trans_t *trans, int msleep) {
 
 	return child_trans;
 }
-msk_trans_t *msk_accept_one_timedwait(msk_trans_t *trans, struct timespec *abstime) {
-	return msk_accept_one_wait(trans, 0);
+msk_trans_t *msk_tcp_accept_one_timedwait(msk_trans_t *trans, struct timespec *abstime) {
+	return msk_tcp_accept_one_wait(trans, 0);
 }
 
-int msk_finalize_accept(msk_trans_t *trans) {
+int msk_tcp_finalize_accept(msk_trans_t *trans) {
 	int rc;
 
 	if (trans->state != MSK_CONNECT_REQUEST)
 		return EINVAL;
 
-	rc = msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
+	rc = msk_tcp_create_thread(&tcpt(trans)->cq_thrid, msk_tcp_recv_thread, trans);
 	if (!rc)
 		trans->state = MSK_CONNECTED;
 
 	return rc;
 }
 
-int msk_connect(msk_trans_t *trans) {
+int msk_tcp_connect(msk_trans_t *trans) {
 	int rc;
 	do {
-		rc = msk_setup_buffers(trans);
+		rc = msk_tcp_setup_buffers(trans);
 		if (rc) {
 			ERROR_LOG("Couldn't setup buffers");
 			break;
@@ -476,13 +476,13 @@ int msk_connect(msk_trans_t *trans) {
 
 	return rc;
 }
-int msk_finalize_connect(msk_trans_t *trans) {
+int msk_tcp_finalize_connect(msk_trans_t *trans) {
 	int rc;
 
 	if (trans->state != MSK_CONNECT_REQUEST)
 		return EINVAL;
 
-	rc = msk_create_thread(&tcpt(trans)->cq_thrid, msk_recv_thread, trans);
+	rc = msk_tcp_create_thread(&tcpt(trans)->cq_thrid, msk_tcp_recv_thread, trans);
 	if (!rc)
 		trans->state = MSK_CONNECTED;
 
@@ -492,18 +492,18 @@ int msk_finalize_connect(msk_trans_t *trans) {
 
 /* utility functions */
 
-struct ibv_mr *msk_reg_mr(msk_trans_t *trans, void *memaddr, size_t size, int access) {
+struct ibv_mr *msk_tcp_reg_mr(msk_trans_t *trans, void *memaddr, size_t size, int access) {
 	return memaddr;
 }
-int msk_dereg_mr(struct ibv_mr *mr) {
+int msk_tcp_dereg_mr(struct ibv_mr *mr) {
 	return 0;
 }
 
-msk_rloc_t *msk_make_rloc(struct ibv_mr *mr, uint64_t addr, uint32_t size) {
+msk_rloc_t *msk_tcp_make_rloc(struct ibv_mr *mr, uint64_t addr, uint32_t size) {
 	return NULL;
 }
 
-int msk_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+int msk_tcp_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
 	struct msk_ctx *ctx;
 	int i;
 
@@ -533,7 +533,7 @@ int msk_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callb
 	return 0;
 }
 
-int msk_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
+int msk_tcp_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg) {
 	int rc, i;
 	uint32_t cur;
 	msk_data_t *data = data_arg;
@@ -572,43 +572,24 @@ int msk_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, ctx_c
 
 	return rc;
 }
-int msk_wait_n_recv(msk_trans_t *trans, msk_data_t *pdata, int num_sge) {
-	return EIO;
-}
-int msk_wait_n_send(msk_trans_t *trans, msk_data_t *pdata, int num_sge) {
-	return EIO;
-}
-int msk_post_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
-	return EIO;
-}
-int msk_post_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc, ctx_callback_t callback, ctx_callback_t err_callback, void* callback_arg) {
-	return EIO;
-}
-int msk_wait_n_read(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc) {
-	return EIO;
-}
-int msk_wait_n_write(msk_trans_t *trans, msk_data_t *pdata, int num_sge, msk_rloc_t *rloc) {
-	return EIO;
-}
 
-
-void msk_print_devinfo(msk_trans_t *trans) {
+void msk_tcp_print_devinfo(msk_trans_t *trans) {
 	ERROR_LOG("Not implemented for TCP");
 }
 
-struct sockaddr *msk_get_dst_addr(msk_trans_t *trans) {
+struct sockaddr *msk_tcp_get_dst_addr(msk_trans_t *trans) {
 	//FIXME getpeername
 	return NULL;
 }
-struct sockaddr *msk_get_src_addr(msk_trans_t *trans) {
+struct sockaddr *msk_tcp_get_src_addr(msk_trans_t *trans) {
 	//FIXME getsockname
 	return NULL;
 }
-uint16_t msk_get_src_port(msk_trans_t *trans) {
+uint16_t msk_tcp_get_src_port(msk_trans_t *trans) {
 	//FIXME
 	return 0;
 }
-uint16_t msk_get_dst_port(msk_trans_t *trans) {
+uint16_t msk_tcp_get_dst_port(msk_trans_t *trans) {
 	//FIXME
 	return 0;
 }
