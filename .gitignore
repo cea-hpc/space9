@@ -7,8 +7,8 @@ doxygen
 *~
 m4
 \#*\#
-lib9p-*.tar.gz
-lib9p.spec
+libspace9-*.tar.gz
+libspace9.spec
 cscope*
 Makefile
 Makefile.in
@@ -21,6 +21,7 @@ config.log
 config.status
 config.sub
 configure
+py-compile
 depcomp
 install-sh
 libtool

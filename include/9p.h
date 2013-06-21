@@ -260,6 +260,7 @@ void p9_destroy(struct p9_handle **pp9_handle);
 
 
 // 9p_libc.c
+
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
 int p9l_cd(struct p9_handle *p9_handle, char *path);
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
@@ -267,6 +268,18 @@ int p9l_rm(struct p9_handle *p9_handle, char *path);
 int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
+
+// 9p_shell_functions.c - used for python bindings
+
+int p9s_ls(struct p9_handle *p9_handle, char *arg);
+int p9s_cd(struct p9_handle *p9_handle, char *arg);
+int p9s_cat(struct p9_handle *p9_handle, char *arg);
+int p9s_mkdir(struct p9_handle *p9_handle, char *arg);
+int p9s_pwd(struct p9_handle *p9_handle, char *arg);
+int p9s_xwrite(struct p9_handle *p9_handle, char *arg);
+int p9s_rm(struct p9_handle *p9_handle, char *arg);
+int p9s_mv(struct p9_handle *p9_handle, char *arg);
+int p9s_ln(struct p9_handle *p9_handle, char *arg);
 
 // 9p_proto.c
 #define P9_HDR_SIZE  4

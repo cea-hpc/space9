@@ -1,5 +1,5 @@
 Summary: The 9p/RDMA library
-Name: lib9p
+Name: libspace9
 Version: @VERSION@
 Release: 1.git@_GIT_HEAD_COMMIT_ABBREV@
 Group: Application/Devel
@@ -9,25 +9,33 @@ Source: %{name}-%{version}.tar.gz
 BuildRoot: /tmp/%{name}-buildroot
 Prefix: %{_prefix}
 Requires: librdmacm, libibverbs
-BuildRequires: librdmacm-devel, libibverbs-devel, gcc, automake, libtool
+BuildRequires: librdmacm-devel, libibverbs-devel, gcc, automake, libtool, python-devel, swig
 
 %package devel
 Group: Application/Devel
 Summary: Development files for libmooshika
 Requires: libmooshika-devel
 
-%package 9p_shell
-Group:Application/Devel
+%package shell
+Group: Application/Devel
 Summary: a 9p/rdma shell
+
+%package python
+Group: Application/Devel
+Summary: python bidings
+Requires: python
 
 %description
 This package contains the 9p/rdma library
 
 %description devel
-Development files for lib9p
+Development files for libspace9
 
-%description 9p_shell
+%description shell
 a basic 9P/RDMA shell
+
+%description python
+python bindings for libspace9
 
 %prep
 %setup -q -n %{name}-%{version}
@@ -47,13 +55,16 @@ rm -rf %{buildroot}
 %{_libdir}/*.so*
 %{_libdir}/*.la
 
-%files 9p_shell
+%files shell
 %{_bindir}/9p_shell
 
 %files devel
 %{_includedir}/*
 %{_libdir}/*.a
 %{_libdir}/pkgconfig/*.pc
+
+%files python
+%{_libdir}/python*/site-packages/*
 
 %changelog
 

@@ -18,20 +18,17 @@
 #include "utils.h"
 #include "settings.h"
 
-#include "9p_shell_functions.h"
-
 #define BUF_SIZE 1024
 
 struct functions {
 	char *name;
 	char *description;
-	int (*func)(struct current_context *, char *);
+	int (*func)(struct p9_handle *, char *);
 };
 
 static int run_threads;
 
-
-static int print_help(struct current_context *, char *arg);
+static int print_help(struct p9_handle *, char *arg);
 
 static struct functions functions[] = {
 	{ "help", "help [<topic>]: this text", print_help },
@@ -48,7 +45,7 @@ static struct functions functions[] = {
 	{ NULL, NULL, NULL }
 };
 
-static int print_help(struct current_context *unused_ctx, char *arg) {
+static int print_help(struct p9_handle *p9_handle, char *arg) {
 	struct functions *fn;
 	for (fn=functions; fn->name != NULL; fn++) {
 		if (strncmp(fn->name, arg, strlen(fn->name)))
@@ -76,10 +73,10 @@ int main() {
 	char *line;
 	char *s;
 	struct functions *fn;
-	struct current_context ctx;
+	struct p9_handle *p9_handle;
         int rc, len;
 
-        rc = p9_init(&ctx.p9_handle, "sample.conf");
+        rc = p9_init(&p9_handle, "sample.conf");
         if (rc) {
                 ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
                 return rc;
@@ -89,8 +86,6 @@ int main() {
 	signal(SIGINT, panic);
 
         INFO_LOG(1, "Init success");
-
-	p9p_walk(ctx.p9_handle, ctx.p9_handle->root_fid, NULL, &ctx.cwd);
 
 #ifdef HAVE_READLINE
 	using_history();
@@ -145,9 +140,9 @@ int main() {
 				continue;
 
 			if (line[len] == ' ')
-				rc = fn->func(&ctx, line + len + 1);
+				rc = fn->func(p9_handle, line + len + 1);
 			else if (line[len] == '\0')
-				rc = fn->func(&ctx, line + len);
+				rc = fn->func(p9_handle, line + len);
 			else /* wasn't really this command */
 				continue;
 
@@ -162,9 +157,7 @@ int main() {
 #endif
 	}
 
-	p9p_clunk(ctx.p9_handle, ctx.cwd);
-
-        p9_destroy(&ctx.p9_handle);
+        p9_destroy(&p9_handle);
 
         return rc;
 }

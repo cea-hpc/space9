@@ -1,0 +1,32 @@
+## setup.py template for python bindings
+## Copyright (C) 2004  Matteo Vescovi <matteo.vescovi@yahoo.co.uk>
+##
+## This program is free software; you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation; either version 2, or (at your option)
+## any later version.
+##
+## This program is distributed in the hope that it will be useful,
+## but WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## GNU General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with this program; if not, write to the Free Software
+## Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
+
+## Process this file with configure to produce setup.py
+
+from distutils.core import setup, Extension
+setup(name='@PACKAGE_NAME@',
+      version='@PACKAGE_VERSION@',
+      description='space9 Python binding',
+      author='Dominique Martinet',
+      author_email='@PACKAGE_BUGREPORT@',
+      url='http://github.com/martinetd/',
+      py_modules=['space9'],
+      ext_modules=[Extension('_space9', ['space9_wrap.c'],
+                             include_dirs=['@top_srcdir@/src'],
+                             library_dirs=['../../src/.libs'],
+                             libraries=['space9'])],
+      )

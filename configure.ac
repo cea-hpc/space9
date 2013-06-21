@@ -1,4 +1,4 @@
-AC_INIT([9p], [0.1], [dominique.martinet@cea.fr])
+AC_INIT([libspace9], [0.1], [dominique.martinet@cea.fr])
 AM_INIT_AUTOMAKE([foreign])
 
 AC_CONFIG_MACRO_DIR([m4])
@@ -65,10 +65,38 @@ fi
 
 AM_CONDITIONAL(ENABLE_TCP, test "x$enable_tcp" == "xyes")
 
+dnl =================
+dnl Checks for Python
+dnl =================
+AM_PATH_PYTHON([],
+               [has_python=yes],
+               [AC_MSG_WARN([Python not found. Python is required to build python binding. Python can be obtained from http://www.python.org])])
+
+AC_ARG_ENABLE([python-binding],
+              AS_HELP_STRING([--enable-python-binding],
+                             [build python binding (default=auto)]))
+
+if test "x$has_python" == "xyes"; then
+  if test "x$enable_python_binding" == "x"; then
+    enable_python_binding=yes
+  fi
+else
+  if test "x$enable_python_binding" == "xyes"; then
+    AC_MSG_ERROR([Need python for python-bindings])
+  fi
+fi
+AM_CONDITIONAL(ENABLE_PYTHON_BINDING, test "x$enable_python_binding" == "xyes")
+
+AC_CACHE_CHECK([for $am_display_PYTHON includes directory],
+    [adl_cv_python_inc],
+    [adl_cv_python_inc=`$PYTHON -c "from distutils import sysconfig; print sysconfig.get_python_inc()" 2>/dev/null`])
+AC_SUBST([PYTHON_CPPFLAGS], [-I$adl_cv_python_inc])
+AX_PKG_SWIG
+AM_CONDITIONAL(HAVE_SWIG, test "x$SWIG" != "x")
 
 #for exporting to spec file
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_HEADERS([include/config.h])
-AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile src/lib9p.pc lib9p.spec])
+AC_CONFIG_FILES([Makefile src/Makefile src/tests/Makefile src/libspace9.pc libspace9.spec src/python/setup.py src/python/Makefile])
 AC_OUTPUT

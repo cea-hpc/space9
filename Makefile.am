@@ -4,10 +4,10 @@ SUBDIRS = src
 
 include_HEADERS = include/9p.h
 
-rpm: dist lib9p.spec
+rpm: dist libspace9.spec
 	rpmbuild $(RPM_DB_ARGS) $(extra_arg) -tb $(distdir).tar.gz
 
-srpm: dist lib9p.spec
+srpm: dist libspace9.spec
 	rpmbuild $(RPM_DB_ARGS) $(extra_arg) -ts $(distdir).tar.gz
 
 rpms: rpm srpm
@@ -19,5 +19,5 @@ doc:
 	doxygen ./doxygen.conf
 	cd doxygen/latex; make pdf
 
-EXTRA_DIST=lib9p.spec \
+EXTRA_DIST=libspace9.spec \
            LICENSE

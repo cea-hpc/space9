@@ -6,7 +6,6 @@
 #include <mooshika.h>
 #include "9p.h"
 #include "utils.h"
-#include "9p_shell_functions.h"
 
 static int ls_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
 	char filetype;
@@ -80,7 +79,7 @@ static int ll_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *df
 	return rc;
 }
 
-int p9s_ls(struct current_context *ctx, char *arg) {
+int p9s_ls(struct p9_handle *p9_handle, char *arg) {
 	int rc = 0;
 	struct p9_fid *fid;
 	uint64_t offset = 0LL;
@@ -98,7 +97,7 @@ int p9s_ls(struct current_context *ctx, char *arg) {
 		}
 	}	
 
-	rc = p9l_open(ctx->p9_handle, &fid, arg, 0, 0, 0);
+	rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
 	if (rc) {
 		printf("couldn't open '%s', error: %s (%d)\n", arg, strerror(rc), rc);
 		return rc;
@@ -106,36 +105,36 @@ int p9s_ls(struct current_context *ctx, char *arg) {
 
 	if (fid->qid.type == P9_QTDIR) {
 		do {
-			count = p9p_readdir(ctx->p9_handle, fid, &offset, cb, NULL);
+			count = p9p_readdir(p9_handle, fid, &offset, cb, NULL);
 			if (count > 0)
 				total += count;
 		} while (count > 0);
 
 		if (count < 0) {
 			rc = -count;
-			printf("readdir failed on fid %u (%s): %s (%d)\n", ctx->p9_handle->cwd->fid, ctx->p9_handle->cwd->path, strerror(rc), rc);
+			printf("readdir failed on fid %u (%s): %s (%d)\n", p9_handle->cwd->fid, p9_handle->cwd->path, strerror(rc), rc);
 		}
 	} else {
-		cb(fid, ctx->p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
+		cb(fid, p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
 		total = 1;
 	}
 
-	p9p_clunk(ctx->p9_handle, fid);
+	p9p_clunk(p9_handle, fid);
 
 	printf("total: %u entries\n", total);
 	return rc;
 }
 
-int p9s_cd(struct current_context *ctx, char *arg) {
+int p9s_cd(struct p9_handle *p9_handle, char *arg) {
 	int rc;
-	rc = p9l_cd(ctx->p9_handle, arg);
+	rc = p9l_cd(p9_handle, arg);
 	if (rc)
 		printf("cd to %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 
 	return rc;
 }
 
-int p9s_ln(struct current_context *ctx, char *arg) {
+int p9s_ln(struct p9_handle *p9_handle, char *arg) {
 	int rc;
 	int symlink = 0;
 	char *dst;
@@ -166,11 +165,11 @@ int p9s_ln(struct current_context *ctx, char *arg) {
 	}
 
 	if (symlink) {
-		rc = p9l_symlink(ctx->p9_handle, arg, dst);
+		rc = p9l_symlink(p9_handle, arg, dst);
 		if (rc)
 			printf("symlink %s %s failed, error: %s (%d)\n", arg, dst, strerror(rc), rc);
 	} else {
-		rc = p9l_link(ctx->p9_handle, arg, dst);
+		rc = p9l_link(p9_handle, arg, dst);
 		if (rc)
 			printf("link %s %s failed, error: %s (%d)\n", arg, dst, strerror(rc), rc);
 	}
@@ -178,7 +177,7 @@ int p9s_ln(struct current_context *ctx, char *arg) {
 	return rc;
 }
 
-int p9s_cat(struct current_context *ctx, char *arg) {
+int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 	int rc, tmp, n;
 	struct p9_fid *fid;
 	char buf[10240];
@@ -189,7 +188,7 @@ int p9s_cat(struct current_context *ctx, char *arg) {
 		return EINVAL;
 	}
 
-	rc = p9l_open(ctx->p9_handle, &fid, arg, 0, O_RDONLY, 0);
+	rc = p9l_open(p9_handle, &fid, arg, 0, O_RDONLY, 0);
 	if (rc) {
 		printf("open %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 		return rc;
@@ -197,7 +196,7 @@ int p9s_cat(struct current_context *ctx, char *arg) {
 
 	offset = 0LL;
 	do {
-		rc = p9p_read(ctx->p9_handle, fid, offset, 10240, buf);
+		rc = p9p_read(p9_handle, fid, offset, 10240, buf);
 		if (rc > 0) {
 			n = 0;
 			while (n < rc) {
@@ -210,28 +209,28 @@ int p9s_cat(struct current_context *ctx, char *arg) {
 		}
 	} while (rc > 0);
 
-	tmp = p9p_clunk(ctx->p9_handle, fid);
+	tmp = p9p_clunk(p9_handle, fid);
 	if (tmp) {
 		printf("clunk failed on fid %u (%s), error: %s (%d)\n", fid->fid, fid->path, strerror(tmp), tmp);
 	}
 
 	return rc;
 }
-int p9s_mkdir(struct current_context *ctx, char *arg) {
+int p9s_mkdir(struct p9_handle *p9_handle, char *arg) {
 	int rc;
-	rc = p9l_mkdir(ctx->p9_handle, arg, 0666);
+	rc = p9l_mkdir(p9_handle, arg, 0666);
 	if (rc)
 		printf("mkdir %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 
 	return rc;
 }
 
-int p9s_pwd(struct current_context *ctx, char *arg) {
-	printf("%s\n", ctx->p9_handle->cwd->path);
+int p9s_pwd(struct p9_handle *p9_handle, char *arg) {
+	printf("%s\n", p9_handle->cwd->path);
 	return 0;
 }
 
-int p9s_xwrite(struct current_context *ctx, char *arg) {
+int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 	int rc, tmp;
 	struct p9_fid *fid;
 	char *filename;
@@ -257,20 +256,20 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 		buf[count]='\0';
 	}
 
-	rc = p9l_open(ctx->p9_handle, &fid, filename, 0666, O_WRONLY|O_CREAT|O_TRUNC, 0);
+	rc = p9l_open(p9_handle, &fid, filename, 0666, O_WRONLY|O_CREAT|O_TRUNC, 0);
 	if (rc) {
 		printf("open failed on %s, error: %s (%d)\n", filename, strerror(rc), rc);
 		return rc;
 	}
 
 	if (buf) {
-		rc = p9p_write(ctx->p9_handle, fid, 0, count, buf);
+		rc = p9p_write(p9_handle, fid, 0, count, buf);
 		/* msk_data_t data;
 		data.data = buf;
 		data.size = count;
 		data.max_size = data.size;
-		p9c_reg_mr(ctx->p9_handle, &data);
-		rc = p9pz_write(ctx->p9_handle, fid, 0, &data);
+		p9c_reg_mr(p9_handle, &data);
+		rc = p9pz_write(p9_handle, fid, 0, &data);
 		p9c_dereg_mr(&data); */
 		if (rc < 0) {
 			printf("write failed on file %s, error: %s (%d)\n", fid->path, strerror(-rc), -rc);
@@ -279,22 +278,22 @@ int p9s_xwrite(struct current_context *ctx, char *arg) {
 		free(buf);
 	}
 
-	tmp = p9p_clunk(ctx->p9_handle, fid);
+	tmp = p9p_clunk(p9_handle, fid);
 	if (tmp) {
 		printf("clunk failed on fid %u (%s), error: %s (%d)\n", fid->fid, fid->path, strerror(tmp), tmp);
 	}	
 	return rc;
 }
 
-int p9s_rm(struct current_context *ctx, char *arg) {
+int p9s_rm(struct p9_handle *p9_handle, char *arg) {
 	int rc;
-	rc = p9l_rm(ctx->p9_handle, arg);
+	rc = p9l_rm(p9_handle, arg);
 	if (rc)
 		printf("rm %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 
 	return rc;
 }
-int p9s_mv(struct current_context *ctx, char *arg) {
+int p9s_mv(struct p9_handle *p9_handle, char *arg) {
 	char *dest;
 
 	dest = strchr(arg, ' ');
@@ -306,6 +305,6 @@ int p9s_mv(struct current_context *ctx, char *arg) {
 	dest[0]='\0';
 	dest++;
 
-	return p9l_mv(ctx->p9_handle, arg, dest);
+	return p9l_mv(p9_handle, arg, dest);
 }
 

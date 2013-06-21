@@ -172,6 +172,10 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 void p9_destroy(struct p9_handle **pp9_handle) {
 	struct p9_handle *p9_handle = *pp9_handle;
 	if (p9_handle) {
+		if (p9_handle->cwd) {
+			p9p_clunk(p9_handle, p9_handle->cwd);
+			p9_handle->cwd = NULL;
+		}
 		if (p9_handle->root_fid) {
 			p9p_clunk(p9_handle, p9_handle->root_fid);
 			p9_handle->root_fid = NULL;
