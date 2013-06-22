@@ -355,7 +355,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 	uint16_t nwname, nwqid;
 	uint8_t msgtype;
 	uint8_t *cursor, *pnwname;
-	char *subpath;
+	char *subpath, *curpath;
 	struct p9_fid *newfid;
 
 	/* Sanity check */
@@ -388,18 +388,19 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 
 		nwname = 0;
 		p9_savepos(cursor, pnwname, uint16_t);
-		while ((subpath = strchr(path, '/')) != NULL) {
+		curpath = path;
+		while ((subpath = strchr(curpath, '/')) != NULL) {
 			subpath[0] = '\0';
-			if (path != subpath) {
-				p9_setstr(cursor, subpath-path, path);
+			if (curpath != subpath) {
+				p9_setstr(cursor, subpath-curpath, curpath);
 				nwname += 1;
 			}
 			subpath[0] = '/';
-			path = subpath+1;
+			curpath = subpath+1;
 		}
 
-		if (strnlen(path,MAXNAMLEN) > 0) {
-			p9_setstr(cursor, strnlen(path, MAXNAMLEN), path);
+		if (strnlen(curpath,MAXNAMLEN) > 0) {
+			p9_setstr(cursor, strnlen(curpath, MAXNAMLEN), curpath);
 			nwname += 1;
 		}
 		p9_setvalue(pnwname, nwname, uint16_t);
@@ -433,7 +434,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				memcpy(&newfid->qid, &fid->qid, sizeof(struct p9_qid));
 			}
 			strncpy(newfid->path, fid->path, fid->pathlen);
-			if (path && fid->pathlen < MAXPATHLEN-2) {
+			if (path && path[0] != '\0' && fid->pathlen < MAXPATHLEN-2) {
 				if (fid->path[fid->pathlen - 1] != '/') {
 					strncpy(newfid->path + fid->pathlen, "/", MAXPATHLEN - fid->pathlen);
 					strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
@@ -443,6 +444,11 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 			}
 			newfid->path[MAXPATHLEN-1] = '\0';
 			newfid->pathlen = path_canonicalizer(newfid->path);
+			if (newfid->path[newfid->pathlen-1] == '/') {
+				/* strip final slash. Do we want that? */
+				newfid->path[newfid->pathlen-1] = '\0';
+				newfid->pathlen--;
+			}
 
 			*pnewfid = newfid;
 			break;
@@ -972,7 +978,7 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
  * @return 0 on success, errno value on error.
  */
 int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, msk_data_t **pdata) {
- 	int rc;
+	int rc;
 	msk_data_t *data;
 	uint16_t tag;
 	uint8_t msgtype;
@@ -1344,7 +1350,7 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offse
  * @return number of bytes written if >= 0, -errno on error.
  */
 ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, msk_data_t *data) {
- 	ssize_t rc;
+	ssize_t rc;
 	msk_data_t *header_data;
 	uint16_t tag;
 	uint8_t msgtype;
@@ -1420,7 +1426,7 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t off
  *          0 indicates eof?
  */
 ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char *buf) {
- 	ssize_t rc;
+	ssize_t rc;
 	msk_data_t *data;
 	uint16_t tag;
 	uint8_t msgtype;

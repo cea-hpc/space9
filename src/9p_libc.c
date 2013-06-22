@@ -58,8 +58,13 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 	path_canonicalizer(canon_path);
 	rc = p9l_walk(p9_handle, canon_path, &fid);
 	if (!rc) {
-		p9p_clunk(p9_handle, p9_handle->cwd);
-		p9_handle->cwd = fid;
+		if (fid->qid.type != P9_QTDIR) {
+			rc = ENOTDIR;
+			p9p_clunk(p9_handle, fid);
+		} else {
+			p9p_clunk(p9_handle, p9_handle->cwd);
+			p9_handle->cwd = fid;
+		}
 	}
 
 	free(canon_path);
