@@ -766,7 +766,7 @@ int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr
 int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags);
 ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
 ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
-ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
+ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
 ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
 
 // 9p_shell_functions.c - used for python bindings

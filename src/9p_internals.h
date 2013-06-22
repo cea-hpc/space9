@@ -200,7 +200,6 @@ struct p9_handle {
 	uint8_t *rdmabuf;
 	struct p9_net_ops *net_ops;
 	msk_trans_t *trans;
-	struct ibv_mr *mr;
 	msk_data_t *rdata;
 	msk_data_t *wdata;
 	pthread_mutex_t wdata_lock;

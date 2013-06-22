@@ -27,10 +27,13 @@ all-local:	space9_wrap.c space9.py
 	$(PYTHON) setup.py build
 
 install-exec-local:
-	$(PYTHON) setup.py install --prefix=$(prefix)
+	$(PYTHON) setup.py install --prefix=$(prefix) --record=pythonfiles.record
+
+uninstall-local:
+	cat pythonfiles.record | xargs rm -f
 
 clean-local:
-	rm -rf build
+	rm -rf build pythonfiles.record
 
 space9_wrap.c space9.py:	$(SWIG_INTERFACE)
 	$(SWIG) -python -I$(top_srcdir)/include -I$(top_srcdir)/src -o space9_wrap.c -outdir . $(srcdir)/$(SWIG_INTERFACE)

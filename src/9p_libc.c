@@ -371,10 +371,16 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	return rc;
 }
 
-int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
-int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr);
+int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
+	return 0;
+}
+int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr) {
+	return 0;
+}
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags);
+int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags) {
+	return 0;
+}
 
 
 ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset) {
@@ -438,5 +444,9 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 	return rc;
 }
 
-ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
-ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
+ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset) {
+	return 0;
+}
+ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset) {
+	return 0;
+}

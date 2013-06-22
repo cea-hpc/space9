@@ -25,7 +25,11 @@
 %}
 %feature("autodoc", "1");
 
-%include "../include/space9.h"
+%include "space9.h"
+
+struct p9_handle {
+	msk_trans_t *trans;
+};
 
 %extend p9_handle {
 	p9_handle(char *conf) {
@@ -36,12 +40,12 @@
 	~p9_handle() {
 		p9_destroy(&$self);
 	}
-	int setdebug(int dbg) {
+	int debug(int dbg) {
 		int t = $self->debug;
 		$self->debug = dbg;
 		return t;
 	}
-	uint32_t setumask(uint32_t mask) {
+	uint32_t umask(uint32_t mask) {
 		return p9l_umask($self, mask);
 	}
 	char *pwd() {
