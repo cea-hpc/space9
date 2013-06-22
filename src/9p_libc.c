@@ -24,8 +24,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 
 static inline int p9l_walk(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid) {

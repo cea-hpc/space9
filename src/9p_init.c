@@ -30,8 +30,7 @@
 #include <netdb.h>      // gethostbyname
 #include <sys/socket.h> // gethostbyname
 #include <unistd.h>     // gethostname
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 #include "9p_tcp.h"
 #include "utils.h"
 #include "settings.h"

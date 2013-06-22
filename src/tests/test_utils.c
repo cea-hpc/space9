@@ -19,13 +19,12 @@
  *
  */
 
-#include <mooshika.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
 
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 
 int main(int argc, char **argv) {

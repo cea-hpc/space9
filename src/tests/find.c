@@ -28,9 +28,8 @@
 #include <stdio.h>
 #include <errno.h>
 #include <signal.h>
-#include <mooshika.h>
 
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 #include "settings.h"
 

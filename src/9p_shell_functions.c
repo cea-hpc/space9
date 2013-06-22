@@ -24,8 +24,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 
 static int ls_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {

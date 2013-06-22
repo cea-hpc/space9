@@ -29,8 +29,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 #include "9p_proto_internals.h"
 #include "utils.h"
 

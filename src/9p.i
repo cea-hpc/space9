@@ -21,8 +21,7 @@
 
 %module space9
 %{
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 %}
 %feature("autodoc", "1");
 

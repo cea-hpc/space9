@@ -34,7 +34,7 @@
 #include <sys/epoll.h>	//epoll
 #define MAX_EVENTS 10
 
-#include <mooshika.h>
+#include "9p_internals.h"
 #include "utils.h"
 
 /**
@@ -61,12 +61,7 @@ struct msk_ctx {
 	msk_data_t *data;
 	ctx_callback_t callback;
 	ctx_callback_t err_callback;
-	union {
-		struct ibv_recv_wr rwr;
-		struct ibv_send_wr wwr;
-	} wr;
 	void *callback_arg;
-	struct ibv_sge sg_list[0]; 		/**< this is actually an array. note that when you malloc you have to add its size */
 };
 
 struct msk_tcp_trans {

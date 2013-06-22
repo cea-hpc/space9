@@ -31,10 +31,9 @@
 #include <fcntl.h>
 #include <inttypes.h> //PRIu64
 #include <sys/time.h>
-#include <mooshika.h>
 #include <getopt.h>
 
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 #include "settings.h"
 

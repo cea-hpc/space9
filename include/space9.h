@@ -22,151 +22,38 @@
 #ifndef SPACE9
 #define SPACE9
 
+#include <stdint.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <pthread.h>
 #include <dirent.h>     // MAXNAMLEN
 #include <sys/param.h>  // MAXPATHLEN
 #include <string.h>     // memset
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include "bitmap.h"
-#include "bucket.h"
 
-/* 9p-specific types */
+struct p9_handle;
+struct p9_fid;
+struct p9_qid;
 
-/**
- * @brief Length prefixed string type
- *
- * The protocol uses length prefixed strings for all
- * string data, so we replicate that for our internal
- * string members.
- */
-
-struct p9_str {
-	uint16_t  len; /*< Length of the string */
-	char *str; /*< The string */
-};
-
+#if HAVE_MOOSHIKA
+#include <mooshika.h>
+#else
 
 /**
- * enum p9_qid - QID types
- * @P9_QTDIR: directory
- * @P9_QTAPPEND: append-only
- * @P9_QTEXCL: excluse use (only one open handle allowed)
- * @P9_QTMOUNT: mount points
- * @P9_QTAUTH: authentication file
- * @P9_QTTMP: non-backed-up files
- * @P9_QTSYMLINK: symbolic links (9P2000.u)
- * @P9_QTLINK: hard-link (9P2000.u)
- * @P9_QTFILE: normal files
- *
- * QID types are a subset of permissions - they are primarily
- * used to differentiate semantics for a file system entity via
- * a jump-table.  Their value is also the most signifigant 16 bits
- * of the permission_
- *
- * See Also: http://plan9.bell-labs.com/magic/man2html/2/sta
+ * \struct msk_data
+ * data size and content to send/just received
  */
-enum {
-	P9_QTDIR = 0x80,
-	P9_QTAPPEND = 0x40,
-	P9_QTEXCL = 0x20,
-	P9_QTMOUNT = 0x10,
-	P9_QTAUTH = 0x08,
-	P9_QTTMP = 0x04,
-	P9_QTSYMLINK = 0x02,
-	P9_QTLINK = 0x01,
-	P9_QTFILE = 0x00,
-};
-
-/**
- * @brief file system entity information
- *
- * qids are /identifiers used by 9P servers to track file system
- * entities.  The type is used to differentiate semantics for operations
- * on the entity (ie. read means something different on a directory than
- * on a file).  The path provides a server unique index for an entity
- * (roughly analogous to an inode number), while the version is updated
- * every time a file is modified and can be used to maintain cache
- * coherency between clients and serves.
- * Servers will often differentiate purely synthetic entities by setting
- * their version to 0, signaling that they should never be cached and
- * should be accessed synchronously.
- *
- * See Also://plan9.bell-labs.com/magic/man2html/2/sta
- */
-
-typedef struct p9_qid {
-	uint8_t type; /*< Type */
-	uint32_t version; /*< Monotonically incrementing version number */
-	uint64_t path; /*< Per-server-unique ID for a file system element */
-} p9_qid_t;
-
-
-/* library types */
-
-struct p9_fid {
-	uint32_t fid;
-	char path[MAXPATHLEN];
-	int pathlen;
-	int open;
-	struct p9_qid qid;
-};
-
-struct p9_tag {
-	msk_data_t *rdata;
-};
-
-struct p9_net_ops {
-	int (*init)(msk_trans_t **ptrans, msk_trans_attr_t *attr);
-	void (*destroy_trans)(msk_trans_t **ptrans);
-
-	int (*connect)(msk_trans_t *trans);
-	int (*finalize_connect)(msk_trans_t *trans);
-
-	struct ibv_mr *(*reg_mr)(msk_trans_t *trans, void *memaddr, size_t size, int access);
-	int (*dereg_mr)(struct ibv_mr *mr);
-
-	int (*post_n_recv)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
-	int (*post_n_send)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
-
-};
-
-struct p9_handle {
-	uint16_t max_tag;
-	char aname[MAXPATHLEN];
-	char hostname[MAX_CANON+1];
-	uint8_t *rdmabuf;
-	struct p9_net_ops *net_ops;
-	msk_trans_t *trans;
+typedef struct msk_data {
+	uint32_t max_size; /**< size of the data field */
+	uint32_t size; /**< size of the data to actually send/read */
+	uint8_t *data; /**< opaque data */
+	struct msk_data *next; /**< For recv/sends with multiple elements, used as a linked list */
 	struct ibv_mr *mr;
-	msk_data_t *rdata;
-	msk_data_t *wdata;
-	pthread_mutex_t wdata_lock;
-	pthread_cond_t wdata_cond;
-	pthread_mutex_t recv_lock;
-	pthread_cond_t recv_cond;
-	pthread_mutex_t tag_lock;
-	pthread_cond_t tag_cond;
-	pthread_mutex_t fid_lock;
-	pthread_mutex_t credit_lock;
-	pthread_cond_t credit_cond;
-	uint32_t credits;
-	bitmap_t *wdata_bitmap;
-	bitmap_t *tags_bitmap;
-	struct p9_tag *tags;
-	uint32_t max_fid;
-	bitmap_t *fids_bitmap;
-	bucket_t *fids_bucket;
-	uint32_t nfids;
-	uint32_t uid;
-	uint32_t recv_num;
-	uint32_t msize;
-	uint32_t debug;
-	uint32_t full_debug;
-	uint32_t umask;
-	struct p9_fid *root_fid;
-	struct p9_fid *cwd;
-};
+} msk_data_t;
+
+#endif
 
 struct fs_stats {
 	uint32_t type;
@@ -189,21 +76,6 @@ struct fs_stats {
 static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
 	memcpy(ptag, data + sizeof(uint32_t) /* msg len */ + sizeof(uint8_t) /* msg type */, sizeof(uint16_t));
 }
-
-
-
-
-// 9p_callbacks.c
-
-void p9_disconnect_cb(msk_trans_t *trans);
-
-void p9_recv_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
-
-
-
 
 // 9p_core.c
 
@@ -276,19 +148,8 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
  */
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid);
 
-static inline int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
-	data->mr = p9_handle->net_ops->reg_mr(p9_handle->trans, data->data, data->max_size, IBV_ACCESS_LOCAL_WRITE);
-	if (data->mr == NULL) {
-		return -1;
-	}
-
-	return 0;
-}
-
-static inline int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
-	return p9_handle->net_ops->dereg_mr(data->mr);
-}
-
+int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data);
+int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data);
 
 // 9p_init.c
 

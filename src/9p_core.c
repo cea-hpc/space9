@@ -26,8 +26,7 @@
 #include <netdb.h>      // gethostbyname
 #include <sys/socket.h> // gethostbyname
 #include <assert.h>
-#include <mooshika.h>
-#include "space9.h"
+#include "9p_internals.h"
 #include "utils.h"
 #include "settings.h"
 
@@ -225,4 +224,19 @@ int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	bucket_put(p9_handle->fids_bucket, fid);
 
 	return 0;
+}
+
+
+int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
+	data->mr = p9_handle->net_ops->reg_mr(p9_handle->trans, data->data, data->max_size, IBV_ACCESS_LOCAL_WRITE);
+#if HAVE_MOOSHIKA
+	if (data->mr == NULL) {
+		return -1;
+	}
+#endif
+	return 0;
+}
+
+int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data) {
+	return p9_handle->net_ops->dereg_mr(data->mr);
 }
