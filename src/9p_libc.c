@@ -403,12 +403,12 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 	size_t sent = 0;
 
 	/* sanity checks */
-	if (p9_handle == NULL || fid == NULL || fid->open == 0)
-		return EINVAL;
+	if (p9_handle == NULL || fid == NULL || buffer == NULL || fid->open == 0)
+		return -EINVAL;
 
 	if (count < 512*1024) { /* copy the buffer if it's less than 500k */
 		do {
-			rc = p9p_write(p9_handle, fid, offset, count - sent, buffer + sent);
+			rc = p9p_write(p9_handle, fid, buffer + sent, count - sent, offset + sent);
 			if (rc <= 0)
 				break;
 			sent += rc;
@@ -421,7 +421,7 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 		do {
 			data.size = count - sent;
 			data.data = buffer + sent;
-			rc = p9pz_write(p9_handle, fid, offset, &data);
+			rc = p9pz_write(p9_handle, fid, &data, offset);
 			if (rc <= 0)
 				break;
 			offset += rc;
@@ -442,11 +442,11 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 	int i;
 
 	if (iovcnt < 0) {
-		rc = EINVAL;
+		return EINVAL;
 	}
 
 	for (i = 0; i < iovcnt; i++) {
-		rc = p9l_write(p9_handle, fid, iov[i].iov_base, iov[i].iov_len, offset);
+		rc = p9l_write(p9_handle, fid, iov[i].iov_base, iov[i].iov_len, offset + total);
 		if (rc < 0)
 			break;
 		if (rc < iov[i].iov_len) {
@@ -459,10 +459,47 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 }
 
 ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset) {
-	return 0;
+	ssize_t rc, total = 0;
+
+	/* sanity checks */
+	if (p9_handle == NULL || fid == NULL || buffer == NULL || fid->open == 0)
+		return EINVAL;
+
+	do {
+		rc = p9p_read(p9_handle, fid, buffer + total, count - total, offset + total);
+		if (rc <= 0)
+			break;
+		total += rc;
+	} while (total < count);
+
+	if (rc < 0) {
+		INFO_LOG(p9_handle->debug, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, offset, strerror(-rc), -rc);
+	} else {
+		rc = total;
+	}
+
+	return rc;
 }
+
 ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset) {
-	return 0;
+	ssize_t rc = 0, total = 0;
+	int i;
+
+	if (iovcnt < 0) {
+		return EINVAL;
+	}
+
+	for (i = 0; i < iovcnt; i++) {
+		rc = p9l_read(p9_handle, fid, iov[i].iov_base, iov[i].iov_len, offset + total);
+		if (rc < 0)
+			break;
+		if (rc < iov[i].iov_len) {
+			rc += total;
+			break;
+		}
+		total += rc;
+	}
+	return rc;
 }
 
 ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg) {

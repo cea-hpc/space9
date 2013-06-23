@@ -201,11 +201,11 @@ int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 
 	offset = 0LL;
 	do {
-		rc = p9p_read(p9_handle, fid, offset, 10240, buf);
+		rc = p9p_read(p9_handle, fid, buf, 10240, offset);
 		if (rc > 0) {
 			n = 0;
 			while (n < rc) {
-				tmp = write(1, buf, rc);
+				tmp = write(1, buf, rc-n);
 				if (tmp <= 0)
 					break;
 				n += tmp;
@@ -268,14 +268,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 	}
 
 	if (buf) {
-		rc = p9p_write(p9_handle, fid, 0, count, buf);
-		/* msk_data_t data;
-		data.data = buf;
-		data.size = count;
-		data.max_size = data.size;
-		p9c_reg_mr(p9_handle, &data);
-		rc = p9pz_write(p9_handle, fid, 0, &data);
-		p9c_dereg_mr(&data); */
+		rc = p9l_write(p9_handle, fid, buf, count, 0);
 		if (rc < 0) {
 			printf("write failed on file %s, error: %s (%d)\n", fid->path, strerror(-rc), -rc);
 		}

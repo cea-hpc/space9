@@ -96,10 +96,10 @@ static void *readwritethr(void* arg) {
 		data->max_size = thrarg->chunksize;
 		p9c_reg_mr(p9_handle, data);
 		do {
-			/* rc = p9p_write(p9_handle, fid, offset, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), buffer); */
+			/* rc = p9p_write(p9_handle, fid, buffer, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), offset); */
 			if (thrarg->totalsize-offset < thrarg->chunksize)
 				data->size = thrarg->totalsize-offset;
-			rc = p9pz_write(p9_handle, fid, offset, data);
+			rc = p9pz_write(p9_handle, fid, data, offset);
 			if (rc < 0)
 				break;
 			offset += rc;
@@ -126,9 +126,9 @@ static void *readwritethr(void* arg) {
 		gettimeofday(&start, NULL);
 		offset = 0LL;
 		do {
-			/* rc = p9p_read(p9_handle, fid, offset, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), buffer); */
+			/* rc = p9p_read(p9_handle, fid, buffer, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), offset); */
 
-			rc = p9pz_read(p9_handle, fid, offset, ((thrarg->totalsize-offset < thrarg->chunksize) ? thrarg->totalsize-offset : thrarg->chunksize), &zbuf, &data);
+			rc = p9pz_read(p9_handle, fid, &zbuf, ((thrarg->totalsize-offset < thrarg->chunksize) ? thrarg->totalsize-offset : thrarg->chunksize), offset, &data);
 			if (rc < 0)
 				break;
 

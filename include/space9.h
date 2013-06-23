@@ -250,13 +250,14 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		fid to use
- * @param [IN]    offset:	offset from which to read
- * @param [IN]    count:	count of bytes to read
  * @param [OUT]   zbuf:		data pointer here
+ * @param [IN]    count:	count of bytes to read
+ * @param [IN]    offset:	offset from which to read
+ * @param [OUT]   pdata:	data to putreply
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char **zbuf, msk_data_t **pdata);
+ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, size_t count, uint64_t offset, msk_data_t **pdata);
 
 /**
  * @brief Read from a file.
@@ -268,13 +269,13 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offs
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		fid to use
- * @param [IN]    offset:	offset from which to read
- * @param [IN]    count:	count of bytes to read
  * @param [OUT]   buf:		data is copied there.
+ * @param [IN]    count:	count of bytes to read
+ * @param [IN]    offset:	offset from which to read
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof
  */
-ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char *buf);
+ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset);
 
 
 /* size[4] Twrite tag[2] fid[4] offset[8] count[4] data[count] */
@@ -289,11 +290,11 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offse
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		fid to use
- * @param [IN]    offset:	offset from which to write
  * @param [IN]    data:		msk_registered msk_data pointer here
+ * @param [IN]    offset:	offset from which to write
  * @return number of bytes written if >= 0, -errno on error.
  */
-ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, msk_data_t *data);
+ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *data, uint64_t offset);
 
 /**
  * @brief Write to a file.
@@ -305,12 +306,12 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t off
  *
  * @param [IN]    p9_handle:	connection handle
  * @param [IN]    fid:		fid to use
- * @param [IN]    offset:	offset from which to write
- * @param [IN]    count:	number of bytes to write
  * @param [IN]    buffer:	data to send
+ * @param [IN]    count:	number of bytes to write
+ * @param [IN]    offset:	offset from which to write
  * @return number of bytes written if >= 0, -errno on error
  */
-ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t offset, size_t count, char *data);
+ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
 
 /**
  * @brief Clunk a fid.
