@@ -212,6 +212,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 				}
 				read_size -= n;
 			}
+			free(junk);
 		}
 
 		ctx->callback(trans, data, ctx->callback_arg);
@@ -231,6 +232,8 @@ int msk_tcp_setup_buffers(msk_trans_t *trans) {
 	trans->recv_buf = malloc(trans->rq_depth * sizeof(struct msk_ctx));
 	if (trans->recv_buf == NULL)
 		return ENOMEM;
+
+	memset(trans->recv_buf, 0, trans->rq_depth * sizeof(struct msk_ctx));
 
 	return 0;
 }
@@ -259,6 +262,7 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 			ret = ENOMEM;
 			break;
 		}
+		memset(trans->cm_id, 0, sizeof(struct msk_tcp_trans));
 
 		trans->state = MSK_INIT;
 
@@ -501,7 +505,7 @@ int msk_tcp_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_c
 	struct msk_ctx *ctx;
 	int i;
 
-       	pthread_mutex_lock(&trans->ctx_lock);
+	pthread_mutex_lock(&trans->ctx_lock);
 	do {
 		for (i = 0, ctx = trans->recv_buf;
 		     i < trans->rq_depth;

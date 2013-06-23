@@ -308,6 +308,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		ERROR_LOG("Could not allocate p9_handle");
 		return ENOMEM;
 	}
+	memset(p9_handle, 0, sizeof(struct p9_handle));
 
 	do {
 		strcpy(p9_handle->aname, p9_conf.aname);
@@ -364,6 +365,8 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			rc = ENOMEM;
 			break;
 		}
+		memset(p9_handle->rdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
+		memset(p9_handle->wdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
 
 		mr = p9_handle->net_ops->reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
 		if (mr == NULL) {

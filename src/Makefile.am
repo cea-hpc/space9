@@ -1,4 +1,4 @@
-SUBDIRS = . tests python #build . before tests
+SUBDIRS = . python tests
 
 AM_CFLAGS = -g -D_REENTRANT -Wall -Wimplicit -Wformat -Wmissing-braces -Wno-pointer-sign -Werror -I$(srcdir)/../include
 
