@@ -760,6 +760,10 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
+int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid);
+int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid);
+int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
+int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode);
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
 int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr);
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
@@ -768,6 +772,7 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
 ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
 ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
+ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
 
 // 9p_shell_functions.c - used for python bindings
 

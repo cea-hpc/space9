@@ -371,6 +371,20 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	return rc;
 }
 
+int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid) {
+	return 0;
+}
+int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid) {
+	return 0;
+}
+
+int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode) {
+	return 0;
+}
+int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode) {
+	return 0;
+}
+
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
 	return 0;
 }
@@ -449,4 +463,35 @@ ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, 
 }
 ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset) {
 	return 0;
+}
+
+ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg) {
+	int rc = 0;
+	struct p9_fid *fid;
+	uint64_t offset = 0LL;
+	int count;
+
+	rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
+	if (rc) {
+		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", arg, strerror(rc), rc);
+		return rc;
+	}
+
+	if (fid->qid.type == P9_QTDIR) {
+		do {
+			count = p9p_readdir(p9_handle, fid, &offset, cb, cb_arg);
+			if (count > 0)
+				rc += count;
+		} while (count > 0);
+
+		if (count < 0) {
+			rc = count;
+			INFO_LOG(p9_handle->debug, "readdir failed on fid %u (%s): %s (%d)\n", p9_handle->cwd->fid, p9_handle->cwd->path, strerror(rc), rc);
+		}
+	} else {
+		rc = -ENOTDIR;
+	}
+
+	p9p_clunk(p9_handle, fid);
+	return rc;
 }

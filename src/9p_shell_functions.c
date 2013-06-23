@@ -102,9 +102,6 @@ static int ll_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *df
 int p9s_ls(struct p9_handle *p9_handle, char *arg) {
 	int rc = 0;
 	struct p9_fid *fid;
-	uint64_t offset = 0LL;
-	int count;
-	uint32_t total = 0;
 	p9p_readdir_cb cb = ls_callback;
 
 	if (strncmp(arg, "-l", 2) == 0) {
@@ -117,31 +114,19 @@ int p9s_ls(struct p9_handle *p9_handle, char *arg) {
 		}
 	}	
 
-	rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
-	if (rc) {
-		printf("couldn't open '%s', error: %s (%d)\n", arg, strerror(rc), rc);
-		return rc;
-	}
-
-	if (fid->qid.type == P9_QTDIR) {
-		do {
-			count = p9p_readdir(p9_handle, fid, &offset, cb, NULL);
-			if (count > 0)
-				total += count;
-		} while (count > 0);
-
-		if (count < 0) {
-			rc = -count;
-			printf("readdir failed on fid %u (%s): %s (%d)\n", p9_handle->cwd->fid, p9_handle->cwd->path, strerror(rc), rc);
+	rc = p9l_ls(p9_handle, arg, cb, NULL);
+	if (rc == -ENOTDIR) {
+		rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
+		if (!rc) {
+			cb(fid, p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
+			p9p_clunk(p9_handle, fid);
 		}
+	} else if (rc < 0) {
+		printf("ls failed: %s (%d)\n", strerror(-rc), -rc);
 	} else {
-		cb(fid, p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
-		total = 1;
+		printf("total: %u entries\n", rc);
 	}
 
-	p9p_clunk(p9_handle, fid);
-
-	printf("total: %u entries\n", total);
 	return rc;
 }
 
