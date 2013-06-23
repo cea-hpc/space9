@@ -762,13 +762,32 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
 int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
 int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid);
-int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid);
 int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
-int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode);
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
-int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr);
+
+static inline int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid) {
+	struct p9_setattr attr;
+	memset(&attr, 0, sizeof(struct p9_setattr));
+	attr.valid = P9_SETATTR_UID | P9_SETATTR_GID;
+	attr.uid = uid;
+	attr.gid = gid;
+	return p9p_setattr(p9_handle, fid, &attr);
+}
+
+static inline int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode) {
+	struct p9_setattr attr;
+	memset(&attr, 0, sizeof(struct p9_setattr));
+	attr.valid = P9_SETATTR_MODE;
+	attr.mode = mode;
+	return p9p_setattr(p9_handle, fid, &attr);
+}
+
+static inline int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr) {
+	return p9p_getattr(p9_handle, fid, attr);
+}
+
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags);
+int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
 ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);
 ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt, uint64_t offset);
 ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count, uint64_t offset);

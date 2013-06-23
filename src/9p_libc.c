@@ -371,29 +371,56 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	return rc;
 }
 
-int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid) {
-	return 0;
-}
 int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid) {
-	return 0;
+	int rc;
+	struct p9_fid *fid;
+
+	rc = p9l_walk(p9_handle, path, &fid);
+	if (!rc) {
+		rc = p9l_fchown(p9_handle, fid, uid, gid);
+		p9l_clunk(p9_handle, fid);
+	}
+
+	return rc;
 }
 
-int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode) {
-	return 0;
-}
 int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode) {
-	return 0;
+	int rc;
+	struct p9_fid *fid;
+
+	rc = p9l_walk(p9_handle, path, &fid);
+	if (!rc) {
+		rc = p9l_fchmod(p9_handle, fid, mode);
+		p9l_clunk(p9_handle, fid);
+	}
+
+	return rc;
 }
 
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
-	return 0;
-}
-int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr) {
-	return 0;
+	int rc;
+	struct p9_fid *fid;
+
+	rc = p9l_walk(p9_handle, path, &fid);
+	if (!rc) {
+		rc = p9l_fstat(p9_handle, fid, attr);
+		p9l_clunk(p9_handle, fid);
+	}
+
+	return rc;
 }
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, const char *path, struct p9_getattr *attr, int flags) {
-	return 0;
+int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags) {
+	int rc;
+	struct p9_fid *fid;
+
+	rc = p9p_walk(p9_handle, dfid, path, &fid);
+	if (!rc) {
+		rc = p9l_fstat(p9_handle, fid, attr);
+		p9l_clunk(p9_handle, fid);
+	}
+
+	return rc;
 }
 
 
