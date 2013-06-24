@@ -109,71 +109,9 @@ struct p9_str {
 };
 
 
-/**
- * enum p9_qid - QID types
- * @P9_QTDIR: directory
- * @P9_QTAPPEND: append-only
- * @P9_QTEXCL: excluse use (only one open handle allowed)
- * @P9_QTMOUNT: mount points
- * @P9_QTAUTH: authentication file
- * @P9_QTTMP: non-backed-up files
- * @P9_QTSYMLINK: symbolic links (9P2000.u)
- * @P9_QTLINK: hard-link (9P2000.u)
- * @P9_QTFILE: normal files
- *
- * QID types are a subset of permissions - they are primarily
- * used to differentiate semantics for a file system entity via
- * a jump-table.  Their value is also the most signifigant 16 bits
- * of the permission_
- *
- * See Also: http://plan9.bell-labs.com/magic/man2html/2/sta
- */
-enum {
-	P9_QTDIR = 0x80,
-	P9_QTAPPEND = 0x40,
-	P9_QTEXCL = 0x20,
-	P9_QTMOUNT = 0x10,
-	P9_QTAUTH = 0x08,
-	P9_QTTMP = 0x04,
-	P9_QTSYMLINK = 0x02,
-	P9_QTLINK = 0x01,
-	P9_QTFILE = 0x00,
-};
-
-/**
- * @brief file system entity information
- *
- * qids are /identifiers used by 9P servers to track file system
- * entities.  The type is used to differentiate semantics for operations
- * on the entity (ie. read means something different on a directory than
- * on a file).  The path provides a server unique index for an entity
- * (roughly analogous to an inode number), while the version is updated
- * every time a file is modified and can be used to maintain cache
- * coherency between clients and serves.
- * Servers will often differentiate purely synthetic entities by setting
- * their version to 0, signaling that they should never be cached and
- * should be accessed synchronously.
- *
- * See Also://plan9.bell-labs.com/magic/man2html/2/sta
- */
-
-typedef struct p9_qid {
-	uint8_t type; /*< Type */
-	uint32_t version; /*< Monotonically incrementing version number */
-	uint64_t path; /*< Per-server-unique ID for a file system element */
-} p9_qid_t;
-
-
-/* library types */
-
-struct p9_fid {
-	uint32_t fid;
-	uint64_t offset;
-	char path[MAXPATHLEN];
-	int pathlen;
-	int open;
-	struct p9_qid qid;
-};
+static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
+	memcpy(ptag, data + sizeof(uint32_t) /* msg len */ + sizeof(uint8_t) /* msg type */, sizeof(uint16_t));
+}
 
 struct p9_tag {
 	msk_data_t *rdata;
@@ -239,6 +177,11 @@ void p9_recv_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
+
+
+/* utility flags - kernel O_RDONLY sucks for being 0 */
+#define RDFLAG 1
+#define WRFLAG 2
 
 
 #endif

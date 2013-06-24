@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include "9p_internals.h"
 #include "9p_proto_internals.h"
 #include "utils.h"
@@ -650,7 +651,12 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLOPEN:
-			fid->open = 1;
+			if (flags & O_WRONLY)
+				fid->openflags = WRFLAG;
+			else if (flags & O_RDWR)
+				fid->openflags = RDFLAG | WRFLAG;
+			else
+				fid->openflags = RDFLAG;
 			p9_getqid(cursor, fid->qid);
 			if (iounit)
 				p9_getvalue(cursor, *iounit, uint32_t);
@@ -731,7 +737,12 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	switch(msgtype) {
 		case P9_RLCREATE:
 			strncat(fid->path, name, MAXPATHLEN - strlen(fid->path));
-			fid->open = 1;
+			if (flags & O_WRONLY)
+				fid->openflags = WRFLAG;
+			else if (flags & O_RDWR)
+				fid->openflags = RDFLAG | WRFLAG;
+			else
+				fid->openflags = RDFLAG;
 			p9_getqid(cursor, fid->qid);
 			if (iounit)
 				p9_getvalue(cursor, *iounit, uint32_t);
@@ -983,7 +994,7 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL || fid->open == 0)
+	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL || (fid->openflags & RDFLAG) == 0)
 		return -EINVAL;
 
 
@@ -1152,7 +1163,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	uint8_t *cursor, *start;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || fid->open == 0)
+	if (p9_handle == NULL || fid == NULL || (fid->openflags & RDFLAG) == 0)
 		return -EINVAL;
 
 	tag = 0;
@@ -1249,7 +1260,7 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, 
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0 || fid->open == 0)
+	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0 || (fid->openflags & RDFLAG) == 0)
 		return -EINVAL;
 
 
@@ -1358,7 +1369,7 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || data == NULL || data->size == 0 || fid->open == 0)
+	if (p9_handle == NULL || fid == NULL || data == NULL || data->size == 0 || (fid->openflags & WRFLAG) == 0)
 		return -EINVAL;
 
 	tag = 0;
@@ -1434,7 +1445,7 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, si
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || buf == NULL || count == 0 || fid->open == 0)
+	if (p9_handle == NULL || fid == NULL || buf == NULL || count == 0 || (fid->openflags & WRFLAG) == 0)
 		return -EINVAL;
 
 	tag = 0;

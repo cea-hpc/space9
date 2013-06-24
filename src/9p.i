@@ -50,9 +50,6 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 struct p9_handle {
 	msk_trans_t *trans;
 };
-struct p9_fid {
-	int open;
-};
 
 %inline %{
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
@@ -151,13 +148,13 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 		errno = p9l_chown($self, path, uid, gid);
 	}
 	void fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
-		errno = p9l_fchown($self, fid, uid, gid);
+		errno = p9l_fchown(fid, uid, gid);
 	}
 	void chmod(char *path, uint32_t mode) {
 		errno = p9l_chmod($self, path, mode);
 	}
 	void fchmod(struct p9_fid *fid, uint32_t mode) {
-		errno = p9l_fchmod($self, fid, mode);
+		errno = p9l_fchmod(fid, mode);
 	}
 	PyObject *stat(char *path) {
 		struct p9_getattr attr;
@@ -193,7 +190,7 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 		struct p9_getattr attr;
 		PyObject *ret = NULL;
 		attr.valid = P9_GETATTR_BASIC;
-		errno = p9l_fstat($self, fid, &attr);
+		errno = p9l_fstat(fid, &attr);
 		if (!errno) {
 			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
@@ -204,13 +201,13 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 		return ret;
 	}
 	void fseek(struct p9_fid *fid, int64_t offset, int whence) {
-		errno = p9l_fseek($self, fid, offset, whence);
+		errno = p9l_fseek(fid, offset, whence);
 	}
 	PyObject *read(struct p9_fid *fid, size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
 		char *buf = malloc(count);
-		rc = p9l_read($self, fid, buf, count);
+		rc = p9l_read(fid, buf, count);
 		if (rc < 0) {
 			errno = -rc;
 		} else {
@@ -221,7 +218,7 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	}
 	int write(struct p9_fid *fid, char *buf, size_t count) {
 		int rc;
-		rc = p9l_write($self, fid, buf, count);
+		rc = p9l_write(fid, buf, count);
 		if (rc < 0) {
 			errno = -rc;
 		}
@@ -230,7 +227,59 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 };
 
 %extend p9_fid {
-	char *path() {
-		return $self->path;
+	void open(uint32_t flags) {
+		if ($self->openflags == 0)
+			errno = p9p_lopen($self->p9_handle, $self, flags, NULL);
 	}
-};
+	void chown(uint32_t uid, uint32_t gid) {
+		errno = p9l_fchown($self, uid, gid);
+	}
+	void chmod(uint32_t mode) {
+		errno = p9l_fchmod($self, mode);
+	}
+	PyObject *stat() {
+		struct p9_getattr attr;
+		PyObject *ret = NULL;
+		attr.valid = P9_GETATTR_BASIC;
+		errno = p9l_fstat($self, &attr);
+		if (!errno) {
+			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
+				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
+				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
+				"ctime", attr.ctime_sec, "rdev", attr.rdev);
+		}
+		return ret;
+	}
+	void seek(int64_t offset, int whence) {
+		errno = p9l_fseek($self, offset, whence);
+	}
+	PyObject *read(size_t count) {
+		int rc;
+		PyObject *pystr = NULL;
+		char *buf = malloc(count);
+		rc = p9l_read($self, buf, count);
+		if (rc < 0) {
+			errno = -rc;
+		} else {
+			pystr = PyString_FromStringAndSize(buf, rc);
+		}
+		free(buf);
+		return pystr;
+	}
+	int write(char *buf, size_t count) {
+		int rc;
+		rc = p9l_write($self, buf, count);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
+	}
+	struct p9_fid *walk(char *path, int flags = 0) {
+		struct p9_fid *fid;
+		if ((errno = p9l_walk($self->p9_handle, $self, path, &fid, flags)))
+			return NULL;
+
+		return fid;
+	}
+}

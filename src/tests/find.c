@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <signal.h>
+#include <fcntl.h>
 
 #include "9p_internals.h"
 #include "utils.h"
@@ -115,6 +116,8 @@ static void *walkthr(void* arg) {
 			printf("walk failed, rc: %s (%d)\n", strerror(rc), rc);
 			break;
 		}
+
+		rc = p9p_lopen(p9_handle, fid, O_RDONLY, NULL);
 
 		cb_arg.tail->name[0] = '\0';
 		cb_arg.tail->pfid = fid;

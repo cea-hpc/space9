@@ -108,14 +108,14 @@ static inline int p9l_rootwalk(struct p9_handle *p9_handle, char *path, struct p
 	return p9l_walk(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid, flags);
 }
 
-static inline int p9l_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
-	if (!p9_handle)
+int p9l_clunk(struct p9_fid *fid) {
+	if (!fid)
 		return EINVAL;
 
-	if (!fid || fid->fid == p9_handle->root_fid->fid || fid->fid == p9_handle->cwd->fid)
+	if (!fid || fid->fid == fid->p9_handle->root_fid->fid || fid->fid == fid->p9_handle->cwd->fid)
 		return 0;
 
-	return p9p_clunk(p9_handle, fid);
+	return p9p_clunk(fid->p9_handle, fid);
 }
 
 int p9l_cd(struct p9_handle *p9_handle, char *path) {
@@ -165,7 +165,7 @@ int p9l_rm(struct p9_handle *p9_handle, char *path) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_unlinkat(p9_handle, fid, basename, 0);
-			p9l_clunk(p9_handle, fid);
+			p9l_clunk(fid);
 		}
 	} else {
 		rc = p9p_unlinkat(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, 0);
@@ -202,7 +202,7 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_mkdir(p9_handle, fid, basename, mode & p9_handle->umask, 0, NULL);
-			p9l_clunk(p9_handle, fid);
+			p9l_clunk(fid);
 		}
 	} else {
 		rc = p9p_mkdir(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, mode & p9_handle->umask, 0, NULL);
@@ -233,7 +233,7 @@ int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_symlink(p9_handle, fid, basename, target, getegid(), NULL);
-			p9l_clunk(p9_handle, fid);
+			p9l_clunk(fid);
 		}
 	} else {
 		rc = p9p_symlink(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, target, getegid(), NULL);
@@ -304,8 +304,8 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 		}
 	} while (0);
 
-	p9l_clunk(p9_handle, target_fid);
-	p9l_clunk(p9_handle, linkname_fid);
+	p9l_clunk(target_fid);
+	p9l_clunk(linkname_fid);
 	free(target_canon_path);
 	free(linkname_canon_path);
 	return rc;
@@ -377,8 +377,8 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		}
 	} while (0);
 
-	p9l_clunk(p9_handle, src_fid);
-	p9l_clunk(p9_handle, dst_fid);
+	p9l_clunk(src_fid);
+	p9l_clunk(dst_fid);
 	free(src_canon_path);
 	free(dst_canon_path);
 	return rc;
@@ -410,7 +410,7 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 				return EINVAL;
 			}
 
-			rc = p9p_walk(p9_handle, relative ? p9_handle->cwd : p9_handle->root_fid, NULL, &fid);
+			rc = p9p_walk(p9_handle, relative ? p9_handle->cwd : p9_handle->root_fid, dirname, &fid);
 			if (rc) {
 				INFO_LOG(p9_handle->debug, "cannot walk into parent dir '%s', %s (%d)", dirname, strerror(rc), rc);
 				break;
@@ -438,14 +438,14 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 			}
 		}
 		if (flags & O_APPEND) {
-			p9l_fseek(p9_handle, fid, 0, SEEK_END);
+			p9l_fseek(fid, 0, SEEK_END);
 		} else {
-			p9l_fseek(p9_handle, fid, 0, SEEK_SET);
+			p9l_fseek(fid, 0, SEEK_SET);
 		}
 	} while (0);
 
 	if (rc)
-		p9l_clunk(p9_handle, fid);
+		p9l_clunk(fid);
 	else
 		*pfid = fid;
 
@@ -459,8 +459,8 @@ int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gi
 
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
-		rc = p9l_fchown(p9_handle, fid, uid, gid);
-		p9l_clunk(p9_handle, fid);
+		rc = p9l_fchown(fid, uid, gid);
+		p9l_clunk(fid);
 	}
 
 	return rc;
@@ -472,8 +472,8 @@ int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
-		rc = p9l_fchmod(p9_handle, fid, mode);
-		p9l_clunk(p9_handle, fid);
+		rc = p9l_fchmod(fid, mode);
+		p9l_clunk(fid);
 	}
 
 	return rc;
@@ -485,8 +485,8 @@ int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
 
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
-		rc = p9l_fstat(p9_handle, fid, attr);
-		p9l_clunk(p9_handle, fid);
+		rc = p9l_fstat(fid, attr);
+		p9l_clunk(fid);
 	}
 
 	return rc;
@@ -498,28 +498,28 @@ int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) 
 
 	rc = p9l_rootwalk(p9_handle, path, &fid, AT_SYMLINK_NOFOLLOW);
 	if (!rc) {
-		rc = p9l_fstat(p9_handle, fid, attr);
-		p9l_clunk(p9_handle, fid);
+		rc = p9l_fstat(fid, attr);
+		p9l_clunk(fid);
 	}
 
 	return rc;
 }
 
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags) {
+int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags) {
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9l_walk(p9_handle, dfid, path, &fid, flags);
+	rc = p9l_walk(dfid->p9_handle, dfid, path, &fid, flags);
 	if (!rc) {
-		rc = p9l_fstat(p9_handle, fid, attr);
-		p9l_clunk(p9_handle, fid);
+		rc = p9l_fstat(fid, attr);
+		p9l_clunk(fid);
 	}
 
 	return rc;
 }
 
-int p9l_fseek(struct p9_handle *p9_handle, struct p9_fid *fid, int64_t offset, int whence) {
+int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence) {
 	int rc = 0;
 	struct p9_getattr attr;
 
@@ -533,7 +533,7 @@ int p9l_fseek(struct p9_handle *p9_handle, struct p9_fid *fid, int64_t offset, i
 			break;
 		case SEEK_END:
 			attr.valid = P9_GETATTR_SIZE;
-			rc = p9p_getattr(p9_handle, fid, &attr);
+			rc = p9p_getattr(fid->p9_handle, fid, &attr);
 			if (!rc) {
 				fid->offset = attr.size + offset;
 			}
@@ -548,18 +548,18 @@ uint64_t p9l_ftell(struct p9_fid *fid) {
 	return fid->offset;
 }
 
-ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count) {
+ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 	ssize_t rc;
 	msk_data_t data;
 	size_t sent = 0;
 
 	/* sanity checks */
-	if (p9_handle == NULL || fid == NULL || buffer == NULL || fid->open == 0)
+	if (fid == NULL || buffer == NULL || (fid->openflags & WRFLAG) == 0)
 		return -EINVAL;
 
 	if (count < 512*1024) { /* copy the buffer if it's less than 500k */
 		do {
-			rc = p9p_write(p9_handle, fid, buffer + sent, count - sent, fid->offset);
+			rc = p9p_write(fid->p9_handle, fid, buffer + sent, count - sent, fid->offset);
 			if (rc <= 0)
 				break;
 			fid->offset += rc;
@@ -569,19 +569,19 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 		data.data = buffer;
 		data.size = count;
 		data.max_size = count;
-		p9c_reg_mr(p9_handle, &data);
+		p9c_reg_mr(fid->p9_handle, &data);
 		do {
 			data.size = count - sent;
 			data.data = buffer + sent;
-			rc = p9pz_write(p9_handle, fid, &data, fid->offset);
+			rc = p9pz_write(fid->p9_handle, fid, &data, fid->offset);
 			if (rc <= 0)
 				break;
 			fid->offset += rc;
 		} while (sent < count);
-		p9c_dereg_mr(p9_handle, &data);
+		p9c_dereg_mr(fid->p9_handle, &data);
 	}
 	if (rc < 0) {
-		INFO_LOG(p9_handle->debug, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
+		INFO_LOG(fid->p9_handle->debug, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
 	} else {
 		rc = sent;
 	}
@@ -589,7 +589,7 @@ ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
 	return rc;	
 }
 
-ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt) {
+ssize_t p9l_writev(struct p9_fid *fid, struct iovec *iov, int iovcnt) {
 	ssize_t rc = 0, total = 0;
 	int i;
 
@@ -598,7 +598,7 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 	}
 
 	for (i = 0; i < iovcnt; i++) {
-		rc = p9l_write(p9_handle, fid, iov[i].iov_base, iov[i].iov_len);
+		rc = p9l_write(fid, iov[i].iov_base, iov[i].iov_len);
 		if (rc < 0)
 			break;
 		if (rc < iov[i].iov_len) {
@@ -610,15 +610,15 @@ ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec
 	return rc;
 }
 
-ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count) {
+ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count) {
 	ssize_t rc, total = 0;
 
 	/* sanity checks */
-	if (p9_handle == NULL || fid == NULL || buffer == NULL || fid->open == 0)
+	if (fid == NULL || buffer == NULL || (fid->openflags & RDFLAG) == 0 )
 		return EINVAL;
 
 	do {
-		rc = p9p_read(p9_handle, fid, buffer + total, count - total, fid->offset);
+		rc = p9p_read(fid->p9_handle, fid, buffer + total, count - total, fid->offset);
 		if (rc <= 0)
 			break;
 		fid->offset += rc;
@@ -626,7 +626,7 @@ ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, 
 	} while (total < count);
 
 	if (rc < 0) {
-		INFO_LOG(p9_handle->debug, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
+		INFO_LOG(fid->p9_handle->debug, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
 	} else {
 		rc = total;
 	}
@@ -634,7 +634,7 @@ ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, 
 	return rc;
 }
 
-ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt) {
+ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt) {
 	ssize_t rc = 0, total = 0;
 	int i;
 
@@ -643,7 +643,7 @@ ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec 
 	}
 
 	for (i = 0; i < iovcnt; i++) {
-		rc = p9l_read(p9_handle, fid, iov[i].iov_base, iov[i].iov_len);
+		rc = p9l_read(fid, iov[i].iov_base, iov[i].iov_len);
 		if (rc < 0)
 			break;
 		if (rc < iov[i].iov_len) {

@@ -79,7 +79,7 @@ static void *readwritethr(void* arg) {
 
 	do {
 		/* get a fid to write in */
-		rc = p9l_open(p9_handle, &fid, filename, 0640 , O_TRUNC|O_RDWR, 0);
+		rc = p9l_open(p9_handle, &fid, filename, 0640 , O_CREAT|O_TRUNC|O_RDWR, 0);
 		if (rc) {
 			printf("couldn't open file %s, error: %s (%d)\n", filename, strerror(rc), rc);
 			break;

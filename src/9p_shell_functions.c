@@ -268,7 +268,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 	}
 
 	if (buf) {
-		rc = p9l_write(p9_handle, fid, buf, count);
+		rc = p9l_write(fid, buf, count);
 		if (rc < 0) {
 			printf("write failed on file %s, error: %s (%d)\n", fid->path, strerror(-rc), -rc);
 		}

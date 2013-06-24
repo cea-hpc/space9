@@ -73,9 +73,73 @@ struct fs_stats {
 #define P9_NONUNAME	(uint32_t)(~0)
 #define P9_MAXWELEM	16
 
-static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
-	memcpy(ptag, data + sizeof(uint32_t) /* msg len */ + sizeof(uint8_t) /* msg type */, sizeof(uint16_t));
-}
+/**
+ * enum p9_qid - QID types
+ * @P9_QTDIR: directory
+ * @P9_QTAPPEND: append-only
+ * @P9_QTEXCL: excluse use (only one open handle allowed)
+ * @P9_QTMOUNT: mount points
+ * @P9_QTAUTH: authentication file
+ * @P9_QTTMP: non-backed-up files
+ * @P9_QTSYMLINK: symbolic links (9P2000.u)
+ * @P9_QTLINK: hard-link (9P2000.u)
+ * @P9_QTFILE: normal files
+ *
+ * QID types are a subset of permissions - they are primarily
+ * used to differentiate semantics for a file system entity via
+ * a jump-table.  Their value is also the most signifigant 16 bits
+ * of the permission_
+ *
+ * See Also: http://plan9.bell-labs.com/magic/man2html/2/sta
+ */
+enum {
+	P9_QTDIR = 0x80,
+	P9_QTAPPEND = 0x40,
+	P9_QTEXCL = 0x20,
+	P9_QTMOUNT = 0x10,
+	P9_QTAUTH = 0x08,
+	P9_QTTMP = 0x04,
+	P9_QTSYMLINK = 0x02,
+	P9_QTLINK = 0x01,
+	P9_QTFILE = 0x00,
+};
+
+/**
+ * @brief file system entity information
+ *
+ * qids are /identifiers used by 9P servers to track file system
+ * entities.  The type is used to differentiate semantics for operations
+ * on the entity (ie. read means something different on a directory than
+ * on a file).  The path provides a server unique index for an entity
+ * (roughly analogous to an inode number), while the version is updated
+ * every time a file is modified and can be used to maintain cache
+ * coherency between clients and serves.
+ * Servers will often differentiate purely synthetic entities by setting
+ * their version to 0, signaling that they should never be cached and
+ * should be accessed synchronously.
+ *
+ * See Also://plan9.bell-labs.com/magic/man2html/2/sta
+ */
+
+typedef struct p9_qid {
+	uint8_t type; /*< Type */
+	uint32_t version; /*< Monotonically incrementing version number */
+	uint64_t path; /*< Per-server-unique ID for a file system element */
+} p9_qid_t;
+
+
+/* library types */
+
+struct p9_fid {
+	struct p9_handle *p9_handle;
+	uint32_t fid;
+	uint64_t offset;
+	char path[MAXPATHLEN];
+	int pathlen;
+	int openflags;
+	struct p9_qid qid;
+};
+
 
 // 9p_core.c
 
@@ -754,8 +818,10 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 
 // 9p_libc.c
 
-int p9l_walk(struct p9_handle *p9_handle,struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
+int p9l_clunk(struct p9_fid *fid);
+int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
+ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
 int p9l_cd(struct p9_handle *p9_handle, char *path);
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
 int p9l_rm(struct p9_handle *p9_handle, char *path);
@@ -768,38 +834,37 @@ int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
 int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
 
-static inline int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid) {
+static inline int p9l_fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	struct p9_setattr attr;
 	memset(&attr, 0, sizeof(struct p9_setattr));
 	attr.valid = P9_SETATTR_UID | P9_SETATTR_GID;
 	attr.uid = uid;
 	attr.gid = gid;
-	return p9p_setattr(p9_handle, fid, &attr);
+	return p9p_setattr(fid->p9_handle, fid, &attr);
 }
 
-static inline int p9l_fchmod(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t mode) {
+static inline int p9l_fchmod(struct p9_fid *fid, uint32_t mode) {
 	struct p9_setattr attr;
 	memset(&attr, 0, sizeof(struct p9_setattr));
 	attr.valid = P9_SETATTR_MODE;
 	attr.mode = mode;
-	return p9p_setattr(p9_handle, fid, &attr);
+	return p9p_setattr(fid->p9_handle, fid, &attr);
 }
 
-static inline int p9l_fstat(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getattr *attr) {
-	return p9p_getattr(p9_handle, fid, attr);
+static inline int p9l_fstat(struct p9_fid *fid, struct p9_getattr *attr) {
+	return p9p_getattr(fid->p9_handle, fid, attr);
 }
 
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
+int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
 
-int p9l_fseek(struct p9_handle *p9_handle, struct p9_fid *fid, int64_t offset, int whence);
+int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence);
 uint64_t p9l_ftell(struct p9_fid *fid);
 
-ssize_t p9l_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count);
-ssize_t p9l_writev(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt);
-ssize_t p9l_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer, size_t count);
-ssize_t p9l_readv(struct p9_handle *p9_handle, struct p9_fid *fid, struct iovec *iov, int iovcnt);
-ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
+ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count);
+ssize_t p9l_writev(struct p9_fid *fid, struct iovec *iov, int iovcnt);
+ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count);
+ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 
 // 9p_shell_functions.c - used for python bindings
 

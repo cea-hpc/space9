@@ -203,8 +203,9 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 		return ENOMEM;
 	}
 
+	fid->p9_handle = p9_handle;
 	fid->fid = fid_i;
-	fid->open = 0;
+	fid->openflags = 0;
 	*pfid = fid;
 	return 0;
 }
