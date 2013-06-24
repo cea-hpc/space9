@@ -168,6 +168,7 @@ typedef struct p9_qid {
 
 struct p9_fid {
 	uint32_t fid;
+	uint64_t offset;
 	char path[MAXPATHLEN];
 	int pathlen;
 	int open;

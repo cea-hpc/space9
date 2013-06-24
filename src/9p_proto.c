@@ -1326,10 +1326,11 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, siz
 		return -EINVAL;
 
 	rc = p9pz_read(p9_handle, fid, &zbuf, count, offset, &data);
-	if (rc > 0)
-		strncpy(buf, zbuf, MIN(count, rc));
 
-	p9c_putreply(p9_handle, data);
+	if (rc >= 0) {
+		strncpy(buf, zbuf, MIN(count, rc+1));
+		p9c_putreply(p9_handle, data);
+	}
 
 	return rc;
 }
@@ -1452,7 +1453,7 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, si
 	p9_setmsglen(cursor, data);
 
 
-	INFO_LOG(p9_handle->debug, "write fid %u (%s), offset %"PRIu64", count %u", fid->fid, fid->path, offset, data->size);
+	INFO_LOG(p9_handle->debug, "write fid %u (%s), offset %"PRIu64", count %zu", fid->fid, fid->path, offset, count);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
