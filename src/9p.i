@@ -44,10 +44,19 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 }
 %}
 
+%exception {
+	errno = 0;
+	$action
+	if (errno) {
+		PyErr_SetFromErrno(PyExc_IOError);
+		SWIG_fail;
+	}
+}
+
 %extend p9_handle {
 	p9_handle(char *conf) {
 		struct p9_handle *handle;
-		p9_init(&handle, conf);
+		errno = p9_init(&handle, conf);
 		return handle;
 	}
 	~p9_handle() {
@@ -64,51 +73,66 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	char *pwd() {
 		return $self->cwd->path;
 	}
-	int cd(char *path) {
-		return p9l_cd($self, path);
+	void cd(char *path) {
+		errno = p9l_cd($self, path);
 	}
 	struct p9_fid *open(char *path, uint32_t mode, uint32_t flags) {
 		struct p9_fid *fid;
-		if (p9l_open($self, &fid, path, mode, flags, 0))
+		if ((errno = p9l_open($self, &fid, path, mode, flags, 0)))
 			return NULL;
 		return fid;
 	}
 	PyObject *ls(char *path) {
 		PyObject *list = PyList_New(0);
-		p9l_ls($self, path, ls_cb, list);
+		errno = p9l_ls($self, path, ls_cb, list);
+		if (errno < 0) {
+			errno = -errno;
+			return NULL;
+		}
+		errno = 0;
 		return list;
 	}
-	int mv(char *src, char *dst) {
-		return p9l_mv($self, src, dst);
+	void mv(char *src, char *dst) {
+		errno = p9l_mv($self, src, dst);
 	}
-	int rm(char *path) {
-		return p9l_rm($self, path);
+	void rm(char *path) {
+		errno = p9l_rm($self, path);
 	}
-	int mkdir(char *path, uint32_t mode) {
-		return p9l_mkdir($self, path, mode);
+	void mkdir(char *path, uint32_t mode) {
+		errno = p9l_mkdir($self, path, mode);
 	}
-	int link(char *target, char *linkname) {
-		return p9l_link($self, target, linkname);
+	void link(char *target, char *linkname) {
+		errno = p9l_link($self, target, linkname);
 	}
-	int symlink(char *target, char *linkname) {
-		return p9l_symlink($self, target, linkname);
+	void symlink(char *target, char *linkname) {
+		errno = p9l_symlink($self, target, linkname);
 	}
-	int chown(char *path, uint32_t uid, uint32_t gid) {
-		return p9l_chown($self, path, uid, gid);
+	void chown(char *path, uint32_t uid, uint32_t gid) {
+		errno = p9l_chown($self, path, uid, gid);
 	}
-	int fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
-		return p9l_fchown($self, fid, uid, gid);
+	void fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
+		errno = p9l_fchown($self, fid, uid, gid);
 	}
-	int chmod(char *path, uint32_t mode) {
-		return p9l_chmod($self, path, mode);
+	void chmod(char *path, uint32_t mode) {
+		errno = p9l_chmod($self, path, mode);
 	}
-	int fchmod(struct p9_fid *fid, uint32_t mode) {
-		return p9l_fchmod($self, fid, mode);
+	void fchmod(struct p9_fid *fid, uint32_t mode) {
+		errno = p9l_fchmod($self, fid, mode);
 	}
 	int read(struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
-		return p9l_read($self, fid, buf, count, offset);
+		int rc;
+		rc = p9l_read($self, fid, buf, count, offset);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
 	}
 	int write(struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
-		return p9l_write($self, fid, buf, count, offset);
+		int rc;
+		rc = p9l_write($self, fid, buf, count, offset);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
 	}
 };

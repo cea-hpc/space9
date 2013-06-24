@@ -538,7 +538,7 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *
 	rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
 	if (rc) {
 		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", arg, strerror(rc), rc);
-		return rc;
+		return -rc;
 	}
 
 	if (fid->qid.type == P9_QTDIR) {

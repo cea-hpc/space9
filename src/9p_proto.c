@@ -441,13 +441,11 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				} else {
 					strncpy(newfid->path + fid->pathlen, path, MAXPATHLEN - fid->pathlen);
 				}
-			}
-			newfid->path[MAXPATHLEN-1] = '\0';
-			newfid->pathlen = path_canonicalizer(newfid->path);
-			if (newfid->path[newfid->pathlen-1] == '/') {
-				/* strip final slash. Do we want that? */
-				newfid->path[newfid->pathlen-1] = '\0';
-				newfid->pathlen--;
+				newfid->path[MAXPATHLEN-1] = '\0';
+				newfid->pathlen = path_canonicalizer(newfid->path);
+			} else {
+				newfid->path[fid->pathlen] = '\0';
+				newfid->pathlen = fid->pathlen;
 			}
 
 			*pnewfid = newfid;
