@@ -27,9 +27,86 @@
 #include "9p_internals.h"
 #include "utils.h"
 
-static inline int p9l_walk(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid) {
-	return p9p_walk(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid);
-} 
+int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags) {
+	int rc;
+	int rec = 0, clunkdir = 0;
+	struct p9_fid *fid, *tmp_dfid, *tmp_fid = NULL;
+	char *basename, *readlink;
+	msk_data_t *data = NULL;
+
+	do {
+		if (rec) {
+			if (data) {
+				p9c_putreply(p9_handle, data);
+				data = NULL;
+			}
+			if (tmp_fid) {
+				p9p_clunk(p9_handle, tmp_fid);
+				tmp_fid = NULL;
+			}
+			tmp_fid = fid;
+
+			rc = p9p_lopen(p9_handle, fid, O_RDONLY, NULL);
+			if (rc)
+				break;
+			rc = p9pz_readlink(p9_handle, fid, &readlink, &data);
+			if (rc > 0 && readlink[0] != '/') {
+				/* walk into link directory if path is relative from link */
+				path_basename(path, &basename);
+				if (path != basename) {
+					basename--;
+					basename[0] = '\0';
+					rc = p9p_walk(p9_handle, dfid, path, &tmp_dfid);
+					basename[0] = '/';
+					if (rc)
+						break;
+					if (clunkdir)
+						p9p_clunk(p9_handle, dfid);
+					dfid = tmp_dfid;
+					clunkdir = 1;
+				}
+			} else if (rc == 0) {
+				rc = ENOENT;
+				break;
+			} else if (rc < 0) {
+				break;
+			}
+			path = readlink;
+		}
+		rc = p9p_walk(p9_handle, dfid, path, &fid);
+		if (rc)
+			break;
+
+		if (flags & AT_SYMLINK_NOFOLLOW)
+			break;
+
+		rec++;
+	} while (rc == 0 && fid->qid.type == P9_QTSYMLINK && rec < MAXSYMLINKS);
+
+	/* cleanup */
+	if (clunkdir) {
+		p9p_clunk(p9_handle, dfid);
+	}
+	if (data) {
+		p9c_putreply(p9_handle, data);
+	}
+	if (tmp_fid) {
+		p9p_clunk(p9_handle, tmp_fid);
+	}
+
+	if (rec == MAXSYMLINKS) {
+		rc = EMLINK;
+		p9p_clunk(p9_handle, fid);
+	}
+
+	if (!rc)
+		*pfid = fid;
+
+	return rc;
+}
+static inline int p9l_rootwalk(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, int flags) {
+	return p9l_walk(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid, flags);
+}
 
 static inline int p9l_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	if (!p9_handle)
@@ -56,7 +133,7 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 
 	strcpy(canon_path, path);
 	path_canonicalizer(canon_path);
-	rc = p9l_walk(p9_handle, canon_path, &fid);
+	rc = p9l_rootwalk(p9_handle, canon_path, &fid, 0);
 	if (!rc) {
 		if (fid->qid.type != P9_QTDIR) {
 			rc = ENOTDIR;
@@ -85,7 +162,7 @@ int p9l_rm(struct p9_handle *p9_handle, char *path) {
 	relative = path_split(canon_path, &dirname, &basename);
 
 	if (dirname[0] != '\0') {
-		rc = p9l_walk(p9_handle, dirname, &fid);
+		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_unlinkat(p9_handle, fid, basename, 0);
 			p9l_clunk(p9_handle, fid);
@@ -122,7 +199,7 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 	relative = path_split(canon_path, &dirname, &basename);
 
 	if (dirname[0] != '\0') {
-		rc = p9l_walk(p9_handle, dirname, &fid);
+		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_mkdir(p9_handle, fid, basename, mode & p9_handle->umask, 0, NULL);
 			p9l_clunk(p9_handle, fid);
@@ -153,7 +230,7 @@ int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname) {
 	relative = path_split(canon_path, &dirname, &basename);
 
 	if (dirname[0] != '\0') {
-		rc = p9l_walk(p9_handle, dirname, &fid);
+		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_symlink(p9_handle, fid, basename, target, getegid(), NULL);
 			p9l_clunk(p9_handle, fid);
@@ -187,7 +264,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 
 		strcpy(target_canon_path, target);
 		path_canonicalizer(target_canon_path);
-		rc = p9l_walk(p9_handle, target_canon_path, &target_fid);
+		rc = p9l_rootwalk(p9_handle, target_canon_path, &target_fid, 0);
 		if (rc) {
 			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", target_canon_path, strerror(rc), rc);
 			break;
@@ -197,7 +274,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 		path_canonicalizer(linkname_canon_path);
 
 		/* check if linkname is a directory first */
-		rc = p9l_walk(p9_handle, linkname_canon_path, &linkname_fid);
+		rc = p9l_rootwalk(p9_handle, linkname_canon_path, &linkname_fid, 0);
 		if (rc != 0 && rc != ENOENT) {
 			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", linkname_canon_path, strerror(rc), rc);
 			break;
@@ -205,7 +282,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 			/* not a directory, walk to dirname instead */
 			linkname_relative = path_split(linkname_canon_path, &linkname_dirname, &linkname_basename);
 			if (linkname_dirname[0] != '\0') {
-				rc = p9l_walk(p9_handle, linkname_dirname, &linkname_fid);
+				rc = p9l_rootwalk(p9_handle, linkname_dirname, &linkname_fid, 0);
 				if (rc) {
 					INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", linkname_dirname, strerror(rc), rc);
 					break;
@@ -257,7 +334,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		path_canonicalizer(src_canon_path);
 		src_relative = path_split(src_canon_path, &src_dirname, &src_basename);
 		if (src_dirname[0] != '\0') {
-			rc = p9l_walk(p9_handle, src_dirname, &src_fid);
+			rc = p9l_rootwalk(p9_handle, src_dirname, &src_fid, 0);
 			if (rc) {
 				INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", src_dirname, strerror(rc), rc);
 				break;
@@ -270,7 +347,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		path_canonicalizer(dst_canon_path);
 
 		/* check if dst is a directory first */
-		rc = p9l_walk(p9_handle, dst_canon_path, &dst_fid);
+		rc = p9l_rootwalk(p9_handle, dst_canon_path, &dst_fid, 0);
 		if (rc != 0 && rc != ENOENT) {
 			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
 			break;
@@ -278,7 +355,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 			/* not a directory, walk to dirname instead */
 			dst_relative = path_split(dst_canon_path, &dst_dirname, &dst_basename);
 			if (dst_dirname[0] != '\0') {
-				rc = p9l_walk(p9_handle, dst_dirname, &dst_fid);
+				rc = p9l_rootwalk(p9_handle, dst_dirname, &dst_fid, 0);
 				if (rc) {
 					INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", dst_dirname, strerror(rc), rc);
 					break;
@@ -325,7 +402,7 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	path_canonicalizer(canon_path);
 
 	do {
-		rc = p9l_walk(p9_handle, canon_path, &fid);
+		rc = p9l_rootwalk(p9_handle, canon_path, &fid, 0);
 		if (rc && flags & O_CREAT) {
 			/* file doesn't exist */
 			relative = path_split(canon_path, &dirname, &basename);
@@ -380,7 +457,7 @@ int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gi
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9l_walk(p9_handle, path, &fid);
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fchown(p9_handle, fid, uid, gid);
 		p9l_clunk(p9_handle, fid);
@@ -393,7 +470,7 @@ int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9l_walk(p9_handle, path, &fid);
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fchmod(p9_handle, fid, mode);
 		p9l_clunk(p9_handle, fid);
@@ -406,7 +483,7 @@ int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9l_walk(p9_handle, path, &fid);
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fstat(p9_handle, fid, attr);
 		p9l_clunk(p9_handle, fid);
@@ -414,12 +491,26 @@ int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
 
 	return rc;
 }
+
+int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
+	int rc;
+	struct p9_fid *fid;
+
+	rc = p9l_rootwalk(p9_handle, path, &fid, AT_SYMLINK_NOFOLLOW);
+	if (!rc) {
+		rc = p9l_fstat(p9_handle, fid, attr);
+		p9l_clunk(p9_handle, fid);
+	}
+
+	return rc;
+}
+
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
 int p9l_fstatat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags) {
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9p_walk(p9_handle, dfid, path, &fid);
+	rc = p9l_walk(p9_handle, dfid, path, &fid, flags);
 	if (!rc) {
 		rc = p9l_fstat(p9_handle, fid, attr);
 		p9l_clunk(p9_handle, fid);

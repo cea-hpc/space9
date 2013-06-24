@@ -41,6 +41,9 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 #define O_CREAT            0100 /* not fcntl */
 #define O_TRUNC           01000 /* not fcntl */
 #define O_APPEND          02000
+/* from /usr/include/fcntl.h */
+# define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
+
 
 
 /* dummy p9_handle struct (it's in internals, not in space9.h - this lets us redefine "debug" and "umask" as methods) */
@@ -99,6 +102,13 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	void cd(char *path) {
 		errno = p9l_cd($self, path);
 	}
+	struct p9_fid *walk(char *path, int flags = 0) {
+		struct p9_fid *fid;
+		if ((errno = p9l_walk($self, path[0] == '/' ? $self->root_fid : $self->cwd, path, &fid, flags)))
+			return NULL;
+
+		return fid;
+	}
 	struct p9_fid *open(char *path, uint32_t mode, uint32_t flags) {
 		struct p9_fid *fid;
 		if ((errno = p9l_open($self, &fid, path, mode, flags, 0)))
@@ -149,6 +159,50 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	void fchmod(struct p9_fid *fid, uint32_t mode) {
 		errno = p9l_fchmod($self, fid, mode);
 	}
+	PyObject *stat(char *path) {
+		struct p9_getattr attr;
+		PyObject *ret = NULL;
+		attr.valid = P9_GETATTR_BASIC;
+		errno = p9l_stat($self, path, &attr);
+		if (!errno) {
+			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
+				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
+				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
+				"ctime", attr.ctime_sec, "rdev", attr.rdev);
+				/* closer to real stat_result struct, but useless if the object isn't created
+				ret = Py_BuildValue("(iiiiiiiiii)", attr.mode, attr.ino, 0, attr.nlink, attr.uid, attr.gid, attr.size, attr.atime_sec, attr.mtime_sec, attr.ctime_sec); */
+		}
+		return ret;
+	}
+	PyObject *lstat(char *path) {
+		struct p9_getattr attr;
+		PyObject *ret = NULL;
+		attr.valid = P9_GETATTR_BASIC;
+		errno = p9l_lstat($self, path, &attr);
+		if (!errno) {
+			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
+				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
+				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
+				"ctime", attr.ctime_sec, "rdev", attr.rdev);
+		}
+		return ret;
+	}
+	PyObject *fstat(struct p9_fid *fid) {
+		struct p9_getattr attr;
+		PyObject *ret = NULL;
+		attr.valid = P9_GETATTR_BASIC;
+		errno = p9l_fstat($self, fid, &attr);
+		if (!errno) {
+			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
+				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
+				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
+				"ctime", attr.ctime_sec, "rdev", attr.rdev);
+		}
+		return ret;
+	}
 	void fseek(struct p9_fid *fid, int64_t offset, int whence) {
 		errno = p9l_fseek($self, fid, offset, whence);
 	}
@@ -172,5 +226,11 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 			errno = -rc;
 		}
 		return rc;
+	}
+};
+
+%extend p9_fid {
+	char *path() {
+		return $self->path;
 	}
 };

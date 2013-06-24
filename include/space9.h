@@ -487,6 +487,7 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
 
 struct p9_getattr {
 	uint64_t valid;
+	uint64_t ino; /* this actually comes from qid */
 	uint32_t mode;
 	uint32_t uid;
 	uint32_t gid;
@@ -753,6 +754,7 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 
 // 9p_libc.c
 
+int p9l_walk(struct p9_handle *p9_handle,struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
 int p9l_cd(struct p9_handle *p9_handle, char *path);
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
@@ -764,6 +766,7 @@ int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
 int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid);
 int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
 
 static inline int p9l_fchown(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	struct p9_setattr attr;

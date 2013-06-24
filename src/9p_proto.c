@@ -984,13 +984,13 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || ztarget == NULL || pdata == NULL || fid->open == 0)
-		return EINVAL;
+		return -EINVAL;
 
 
 	tag = 0;
 	rc = p9c_getbuffer(p9_handle, &data, &tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	p9_initcursor(cursor, data->data, P9_TREADLINK, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -998,11 +998,11 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
-		return rc;
+		return -rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
-		return rc;
+		return -rc;
 
 	cursor = data->data;
 	p9_getheader(cursor, msgtype);
@@ -1010,6 +1010,7 @@ int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarge
 		case P9_RREADLINK:
 			*pdata = data;
 			p9_getstr(cursor, rc, *ztarget);
+			cursor[0] = '\0';
 			break;
 
 		case P9_RERROR:
@@ -1034,7 +1035,7 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
 
 	/* Sanity check */
 	if (p9_handle == NULL || fid == NULL || target == NULL)
-		return EINVAL;
+		return -EINVAL;
 
 	rc = p9pz_readlink(p9_handle, fid, &ztarget, &data);
 	if (rc >= 0) {
@@ -1847,6 +1848,7 @@ int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getat
 			p9_skipvalue(cursor, uint64_t); /* gen */
 			p9_skipvalue(cursor, uint64_t); /* data_version */
 #endif
+			attr->ino = fid->qid.path;
 			break;
 
 		case P9_RERROR:
