@@ -247,12 +247,10 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 	struct p9_handle *p9_handle = *pp9_handle;
 	if (p9_handle) {
 		if (p9_handle->cwd) {
-			p9p_clunk(p9_handle, p9_handle->cwd);
-			p9_handle->cwd = NULL;
+			p9p_clunk(p9_handle, &p9_handle->cwd);
 		}
 		if (p9_handle->root_fid) {
-			p9p_clunk(p9_handle, p9_handle->root_fid);
-			p9_handle->root_fid = NULL;
+			p9p_clunk(p9_handle, &p9_handle->root_fid);
 		}
 		if (p9_handle->fids_bitmap) {
 			free(p9_handle->fids_bitmap);

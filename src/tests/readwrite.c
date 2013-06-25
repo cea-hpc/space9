@@ -147,7 +147,7 @@ static void *readwritethr(void* arg) {
 	} while (0);
 
 	if (fid) {
-		tmprc = p9p_clunk(p9_handle, fid);
+		tmprc = p9p_clunk(p9_handle, &fid);
 		if (tmprc) {
 			printf("clunk failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
 		}

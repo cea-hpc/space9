@@ -104,10 +104,10 @@ static void *walkthr(void* arg) {
 
 	while (rc == 0 && cb_arg.tail != NULL) {
 		if (cb_arg.tail->name[0] == '\0') {
-			p9p_clunk(p9_handle, cb_arg.tail->pfid);
+			p9p_clunk(p9_handle, &cb_arg.tail->pfid);
 			nlist = cb_arg.tail;
 			cb_arg.tail = cb_arg.tail->next;
-			bucket_put(buck, nlist);
+			bucket_put(buck, (void **)&nlist);
 			continue;
 		}
 

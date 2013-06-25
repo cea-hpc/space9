@@ -171,13 +171,13 @@ int p9p_auth(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pafid) {
 			break;
 
 		case P9_RERROR:
-			p9c_putfid(p9_handle, fid);
+			p9c_putfid(p9_handle, &fid);
 			p9_getvalue(cursor, rc, uint32_t);
 			break;
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TAUTH, tag);
-			p9c_putfid(p9_handle, fid);
+			p9c_putfid(p9_handle, &fid);
 			rc = EIO;
 	}
 
@@ -256,13 +256,13 @@ int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) 
 			break;
 
 		case P9_RERROR:
-			p9c_putfid(p9_handle, fid);
+			p9c_putfid(p9_handle, &fid);
 			p9_getvalue(cursor, rc, uint32_t);
 			break;
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TATTACH, tag);
-			p9c_putfid(p9_handle, fid);
+			p9c_putfid(p9_handle, &fid);
 			rc = EIO;
 	}
 
@@ -453,13 +453,13 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 			break;
 
 		case P9_RERROR:
-			p9c_putfid(p9_handle, newfid);
+			p9c_putfid(p9_handle, &newfid);
 			p9_getvalue(cursor, rc, uint32_t);
 			break;
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TWALK, tag);
-			p9c_putfid(p9_handle, newfid);
+			p9c_putfid(p9_handle, &newfid);
 			rc = EIO;
 	}
 
@@ -478,10 +478,10 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
  * size[4] Rclunk tag[2]
  *
  * @param [IN]    p9_handle:	connection handle
- * @param [IN]    fid:		fid to clunk
+ * @param [IN]    pfid:		fid to clunk
  * @return 0 on success, errno value on error.
  */
-int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
+int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -489,7 +489,7 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL)
+	if (p9_handle == NULL || pfid == NULL || *pfid == NULL)
 		return EINVAL;
 
 
@@ -499,10 +499,10 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 		return rc;
 
 	p9_initcursor(cursor, data->data, P9_TCLUNK, tag);
-	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, (*pfid)->fid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "clunk on fid %u (%s)", fid->fid, fid->path);
+	INFO_LOG(p9_handle->debug, "clunk on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -530,7 +530,7 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
 
 	p9c_putreply(p9_handle, data);
 	/* fid is invalid anyway */
-	p9c_putfid(p9_handle, fid);
+	p9c_putfid(p9_handle, pfid);
 
 	return rc;
 }
@@ -547,7 +547,7 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid) {
  * @param [IN]    fid:		fid to remove
  * @return 0 on success, errno value on error.
  */
-int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid) {
+int p9p_remove(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	int rc;
 	msk_data_t *data;
 	uint16_t tag;
@@ -555,7 +555,7 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL)
+	if (p9_handle == NULL || pfid == NULL || *pfid == NULL)
 		return EINVAL;
 
 
@@ -565,10 +565,10 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid) {
 		return rc;
 
 	p9_initcursor(cursor, data->data, P9_TREMOVE, tag);
-	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, (*pfid)->fid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "remove on fid %u (%s)", fid->fid, fid->path);
+	INFO_LOG(p9_handle->debug, "remove on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -596,7 +596,7 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid) {
 
 	p9c_putreply(p9_handle, data);
 	/* fid is invalid anyway */
-	p9c_putfid(p9_handle, fid);
+	p9c_putfid(p9_handle, pfid);
 
 	return rc;
 }
@@ -1563,13 +1563,13 @@ int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid
 			break;
 
 		case P9_RERROR:
-			p9c_putfid(p9_handle, newfid);
+			p9c_putfid(p9_handle, &newfid);
 			p9_getvalue(cursor, rc, uint32_t);
 			break;
 
 		default:
 			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TXATTRWALK, tag);
-			p9c_putfid(p9_handle, newfid);
+			p9c_putfid(p9_handle, &newfid);
 			rc = EIO;
 	}
 

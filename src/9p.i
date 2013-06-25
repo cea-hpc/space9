@@ -19,7 +19,7 @@
  *
  */
 
-%module space9
+%module(docstring="Space9 userspace 9P library. Everyting starts with a p9_handle('conffile').") space9
 %{
 #include "9p_internals.h"
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
@@ -66,11 +66,12 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	errno = 0;
 	$action
 	if (errno) {
-		PyErr_SetFromErrno(PyExc_IOError);
-		SWIG_fail;
+		return PyErr_SetFromErrno(PyExc_IOError);
 	}
 }
 
+%feature("autodoc", "p9_handle is the filesystem handle. Use it to open a file, list directories, etc.
+Most fd-operations can be done on fids once you have one (walk or open)") p9_handle;
 %extend p9_handle {
 	p9_handle(char *conf) {
 		struct p9_handle *handle;
@@ -113,11 +114,8 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 
 		return fid;
 	}
-	void close(struct p9_fid *fid) {
-		errno = p9p_clunk($self, fid);
-	}
 	void fsync(struct p9_fid *fid) {
-		errno = p9p_fsync($self, fid);
+		errno = p9l_fsync(fid);
 	}
 	PyObject *ls(char *path = "") {
 		PyObject *list = PyList_New(0);
@@ -206,14 +204,18 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	PyObject *read(struct p9_fid *fid, size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
-		char *buf = malloc(count);
-		rc = p9l_read(fid, buf, count);
-		if (rc < 0) {
-			errno = -rc;
+		char *zbuf;
+		msk_data_t *data;
+
+		rc = p9pz_read($self, fid, &zbuf, count, fid->offset, &data);
+
+		if (rc >= 0) {
+			pystr = PyString_FromStringAndSize(zbuf, MIN(count, rc));
+			p9c_putreply($self, data);
+			fid->offset += rc;
 		} else {
-			pystr = PyString_FromStringAndSize(buf, rc);
+			errno = -rc;
 		}
-		free(buf);
 		return pystr;
 	}
 	int write(struct p9_fid *fid, char *buf, size_t count) {
@@ -226,16 +228,39 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	}
 };
 
+%feature("autodoc", "file handle. Use to read/write, etc.
+p9_fid(p9_handle, path[, mode, flags])
+
+On creation it's either not opened (if so, open later) or if open flags are set it's opened directly.
+flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
 %extend p9_fid {
-	void open(uint32_t flags) {
-		if ($self->openflags == 0)
-			errno = p9p_lopen($self->p9_handle, $self, flags, NULL);
+	p9_fid(struct p9_handle *p9_handle, char *path, uint32_t mode = 0, uint32_t flags = 0) {
+		struct p9_fid *fid;
+		if (flags == 0) {
+			errno = p9l_walk(p9_handle, path[0] == '/' ? p9_handle->root_fid : p9_handle->cwd, path, &fid, flags);
+		} else {
+			errno = p9l_open(p9_handle, &fid, path, mode, flags, 0);
+		}
+		if (errno)
+			return NULL;
+
+		return fid;
+	}
+	~p9_fid() {
+		errno = p9p_clunk($self->p9_handle, &$self);
+	}
+       void open(uint32_t flags) {
+               if ($self->openflags == 0)
+                       errno = p9p_lopen($self->p9_handle, $self, flags, NULL);
 	}
 	void chown(uint32_t uid, uint32_t gid) {
 		errno = p9l_fchown($self, uid, gid);
 	}
 	void chmod(uint32_t mode) {
 		errno = p9l_fchmod($self, mode);
+	}
+	void fsync() {
+		errno = p9l_fsync($self);
 	}
 	PyObject *stat() {
 		struct p9_getattr attr;
@@ -251,20 +276,26 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 		}
 		return ret;
 	}
+%feature("autodoc", "seek(p9_fid self, int64_t offset, int whence)
+whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 	void seek(int64_t offset, int whence) {
 		errno = p9l_fseek($self, offset, whence);
 	}
 	PyObject *read(size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
-		char *buf = malloc(count);
-		rc = p9l_read($self, buf, count);
-		if (rc < 0) {
-			errno = -rc;
+		char *zbuf;
+		msk_data_t *data;
+
+		rc = p9pz_read($self->p9_handle, $self, &zbuf, count, $self->offset, &data);
+
+		if (rc >= 0) {
+			pystr = PyString_FromStringAndSize(zbuf, MIN(count, rc));
+			p9c_putreply($self->p9_handle, data);
+			$self->offset += rc;
 		} else {
-			pystr = PyString_FromStringAndSize(buf, rc);
+			errno = -rc;
 		}
-		free(buf);
 		return pystr;
 	}
 	int write(char *buf, size_t count) {

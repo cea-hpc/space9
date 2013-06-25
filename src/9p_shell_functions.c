@@ -94,7 +94,7 @@ static int ll_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *df
 		}
 
 		if (!arg)
-			p9p_clunk(p9_handle, fid);
+			p9p_clunk(p9_handle, &fid);
 	}
 	return rc;
 }
@@ -119,7 +119,7 @@ int p9s_ls(struct p9_handle *p9_handle, char *arg) {
 		rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
 		if (!rc) {
 			cb(fid, p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
-			p9p_clunk(p9_handle, fid);
+			p9p_clunk(p9_handle, &fid);
 		}
 	} else if (rc < 0) {
 		printf("ls failed: %s (%d)\n", strerror(-rc), -rc);
@@ -214,7 +214,7 @@ int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 		}
 	} while (rc > 0);
 
-	tmp = p9p_clunk(p9_handle, fid);
+	tmp = p9p_clunk(p9_handle, &fid);
 	if (tmp) {
 		printf("clunk failed on fid %u (%s), error: %s (%d)\n", fid->fid, fid->path, strerror(tmp), tmp);
 	}
@@ -276,7 +276,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 		free(buf);
 	}
 
-	tmp = p9p_clunk(p9_handle, fid);
+	tmp = p9p_clunk(p9_handle, &fid);
 	if (tmp) {
 		printf("clunk failed on fid %u (%s), error: %s (%d)\n", fid->fid, fid->path, strerror(tmp), tmp);
 	}	

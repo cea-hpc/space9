@@ -41,7 +41,7 @@ int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struc
 				data = NULL;
 			}
 			if (tmp_fid) {
-				p9p_clunk(p9_handle, tmp_fid);
+				p9p_clunk(p9_handle, &tmp_fid);
 				tmp_fid = NULL;
 			}
 			tmp_fid = fid;
@@ -61,7 +61,7 @@ int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struc
 					if (rc)
 						break;
 					if (clunkdir)
-						p9p_clunk(p9_handle, dfid);
+						p9p_clunk(p9_handle, &dfid);
 					dfid = tmp_dfid;
 					clunkdir = 1;
 				}
@@ -85,18 +85,18 @@ int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struc
 
 	/* cleanup */
 	if (clunkdir) {
-		p9p_clunk(p9_handle, dfid);
+		p9p_clunk(p9_handle, &dfid);
 	}
 	if (data) {
 		p9c_putreply(p9_handle, data);
 	}
 	if (tmp_fid) {
-		p9p_clunk(p9_handle, tmp_fid);
+		p9p_clunk(p9_handle, &tmp_fid);
 	}
 
 	if (rec == MAXSYMLINKS) {
 		rc = EMLINK;
-		p9p_clunk(p9_handle, fid);
+		p9p_clunk(p9_handle, &fid);
 	}
 
 	if (!rc)
@@ -108,14 +108,24 @@ static inline int p9l_rootwalk(struct p9_handle *p9_handle, char *path, struct p
 	return p9l_walk(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid, flags);
 }
 
-int p9l_clunk(struct p9_fid *fid) {
-	if (!fid)
+int p9l_clunk(struct p9_fid **pfid) {
+	if (!pfid || !*pfid)
 		return EINVAL;
 
-	if (!fid || fid->fid == fid->p9_handle->root_fid->fid || fid->fid == fid->p9_handle->cwd->fid)
+	if ((*pfid)->fid == (*pfid)->p9_handle->root_fid->fid || (*pfid)->fid == (*pfid)->p9_handle->cwd->fid)
 		return 0;
 
-	return p9p_clunk(fid->p9_handle, fid);
+	return p9p_clunk((*pfid)->p9_handle, pfid);
+}
+
+int p9l_remove(struct p9_fid **pfid) {
+	if (!pfid || !*pfid)
+		return EINVAL;
+
+	if ((*pfid)->fid == (*pfid)->p9_handle->root_fid->fid || (*pfid)->fid == (*pfid)->p9_handle->cwd->fid)
+		return 0;
+
+	return p9p_remove((*pfid)->p9_handle, pfid);
 }
 
 int p9l_cd(struct p9_handle *p9_handle, char *path) {
@@ -137,9 +147,9 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 	if (!rc) {
 		if (fid->qid.type != P9_QTDIR) {
 			rc = ENOTDIR;
-			p9p_clunk(p9_handle, fid);
+			p9p_clunk(p9_handle, &fid);
 		} else {
-			p9p_clunk(p9_handle, p9_handle->cwd);
+			p9p_clunk(p9_handle, &p9_handle->cwd);
 			p9_handle->cwd = fid;
 		}
 	}
@@ -165,7 +175,7 @@ int p9l_rm(struct p9_handle *p9_handle, char *path) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_unlinkat(p9_handle, fid, basename, 0);
-			p9l_clunk(fid);
+			p9l_clunk(&fid);
 		}
 	} else {
 		rc = p9p_unlinkat(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, 0);
@@ -202,7 +212,7 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_mkdir(p9_handle, fid, basename, mode & p9_handle->umask, 0, NULL);
-			p9l_clunk(fid);
+			p9l_clunk(&fid);
 		}
 	} else {
 		rc = p9p_mkdir(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, mode & p9_handle->umask, 0, NULL);
@@ -233,7 +243,7 @@ int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname) {
 		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
 		if (!rc) {
 			rc = p9p_symlink(p9_handle, fid, basename, target, getegid(), NULL);
-			p9l_clunk(fid);
+			p9l_clunk(&fid);
 		}
 	} else {
 		rc = p9p_symlink(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, target, getegid(), NULL);
@@ -304,8 +314,8 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 		}
 	} while (0);
 
-	p9l_clunk(target_fid);
-	p9l_clunk(linkname_fid);
+	p9l_clunk(&target_fid);
+	p9l_clunk(&linkname_fid);
 	free(target_canon_path);
 	free(linkname_canon_path);
 	return rc;
@@ -377,8 +387,8 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		}
 	} while (0);
 
-	p9l_clunk(src_fid);
-	p9l_clunk(dst_fid);
+	p9l_clunk(&src_fid);
+	p9l_clunk(&dst_fid);
 	free(src_canon_path);
 	free(dst_canon_path);
 	return rc;
@@ -445,7 +455,7 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 	} while (0);
 
 	if (rc)
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	else
 		*pfid = fid;
 
@@ -460,7 +470,7 @@ int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gi
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fchown(fid, uid, gid);
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	}
 
 	return rc;
@@ -473,7 +483,7 @@ int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fchmod(fid, mode);
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	}
 
 	return rc;
@@ -486,7 +496,7 @@ int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) {
 	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fstat(fid, attr);
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	}
 
 	return rc;
@@ -499,7 +509,7 @@ int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr) 
 	rc = p9l_rootwalk(p9_handle, path, &fid, AT_SYMLINK_NOFOLLOW);
 	if (!rc) {
 		rc = p9l_fstat(fid, attr);
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	}
 
 	return rc;
@@ -513,7 +523,7 @@ int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int fl
 	rc = p9l_walk(dfid->p9_handle, dfid, path, &fid, flags);
 	if (!rc) {
 		rc = p9l_fstat(fid, attr);
-		p9l_clunk(fid);
+		p9l_clunk(&fid);
 	}
 
 	return rc;
@@ -682,6 +692,6 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *
 		rc = -ENOTDIR;
 	}
 
-	p9p_clunk(p9_handle, fid);
+	p9p_clunk(p9_handle, &fid);
 	return rc;
 }

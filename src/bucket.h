@@ -55,18 +55,19 @@ static inline void bucket_destroy(bucket_t *bucket) {
 	free(bucket);
 }
 
-static inline void bucket_put(bucket_t *bucket, void *item) {
+static inline void bucket_put(bucket_t *bucket, void **pitem) {
 	pthread_mutex_lock(&bucket->lock);
 	if (bucket->count >= bucket->size) {
-		free(item);
+		free(*pitem);
 	} else {
-		bucket->array[bucket->last] = item;
+		bucket->array[bucket->last] = *pitem;
 		bucket->last++;
 		bucket->count++;
 		if (bucket->last == bucket->size)
 			bucket->last = 0;
 	}
 	pthread_mutex_unlock(&bucket->lock);
+	*pitem = NULL;
 }
 
 

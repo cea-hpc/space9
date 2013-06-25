@@ -210,7 +210,7 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
  * @param [IN]    fid:		fid to release
  * @return 0 on success, errno value on error
  */
-int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid *fid);
+int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
 
 int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data);
 int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data);
@@ -389,7 +389,7 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buffer,
  * @param [IN]    fid:		fid to clunk
  * @return 0 on success, errno value on error.
  */
-int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid);
+int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid **pfid);
 
 /**
  * @brief Clunk a fid and unlinks the file associated with it.
@@ -403,7 +403,7 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid *fid);
  * @param [IN]    fid:		fid to remove
  * @return 0 on success, errno value on error.
  */
-int p9p_remove(struct p9_handle *p9_handle, struct p9_fid *fid);
+int p9p_remove(struct p9_handle *p9_handle, struct p9_fid **pfid);
 
 /**
  * @brief Get filesystem information.
@@ -818,7 +818,8 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 
 // 9p_libc.c
 
-int p9l_clunk(struct p9_fid *fid);
+int p9l_clunk(struct p9_fid **pfid);
+int p9l_remove(struct p9_fid **pfid);
 int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
 int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
 ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
@@ -854,6 +855,11 @@ static inline int p9l_fchmod(struct p9_fid *fid, uint32_t mode) {
 static inline int p9l_fstat(struct p9_fid *fid, struct p9_getattr *attr) {
 	return p9p_getattr(fid->p9_handle, fid, attr);
 }
+
+static inline int p9l_fsync(struct p9_fid *fid) {
+	return p9p_fsync(fid->p9_handle, fid);
+}
+
 
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
 int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);

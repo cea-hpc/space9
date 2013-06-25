@@ -2,3 +2,4 @@ setup.py
 space9_wrap.c
 space9.py
 build
+pythonfiles.record
