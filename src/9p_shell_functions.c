@@ -193,7 +193,7 @@ int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 		return EINVAL;
 	}
 
-	rc = p9l_open(p9_handle, &fid, arg, 0, O_RDONLY, 0);
+	rc = p9l_open(p9_handle, &fid, arg, O_RDONLY, 0, 0);
 	if (rc) {
 		printf("open %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 		return rc;
@@ -261,7 +261,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 		buf[count]='\0';
 	}
 
-	rc = p9l_open(p9_handle, &fid, filename, 0666, O_WRONLY|O_CREAT|O_TRUNC, 0);
+	rc = p9l_open(p9_handle, &fid, filename, O_WRONLY|O_CREAT|O_TRUNC, 0666, 0);
 	if (rc) {
 		printf("open failed on %s, error: %s (%d)\n", filename, strerror(rc), rc);
 		return rc;

@@ -821,7 +821,7 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 int p9l_clunk(struct p9_fid **pfid);
 int p9l_remove(struct p9_fid **pfid);
 int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
-int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid);
+int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t flags, uint32_t mode, uint32_t gid);
 ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
 int p9l_cd(struct p9_handle *p9_handle, char *path);
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);

@@ -394,7 +394,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 	return rc;
 }
 
-int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t mode, uint32_t flags, uint32_t gid) {
+int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t flags, uint32_t mode, uint32_t gid) {
 	char *canon_path, *dirname, *basename;
 	struct p9_fid *fid = NULL;
 	struct p9_setattr attr;
@@ -425,7 +425,7 @@ int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint
 				INFO_LOG(p9_handle->debug, "cannot walk into parent dir '%s', %s (%d)", dirname, strerror(rc), rc);
 				break;
 			}
-			rc = p9p_lcreate(p9_handle, fid, basename, mode & p9_handle->umask, flags, gid, NULL);
+			rc = p9p_lcreate(p9_handle, fid, basename, flags, mode & p9_handle->umask, gid, NULL);
 			if (rc) {
 				INFO_LOG(p9_handle->debug, "cannot create file '%s' in '%s', %s (%d)", basename, dirname, strerror(rc), rc);
 				break;

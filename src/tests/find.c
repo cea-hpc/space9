@@ -29,6 +29,7 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <getopt.h>
 
 #include "9p_internals.h"
 #include "utils.h"
@@ -37,7 +38,10 @@
 #include "bucket.h"
 
 #define DEFAULT_THRNUM 10
-#define STARTPOINT "sigmund"
+#define DEFAULT_STARTPOINT "sigmund"
+#define DEFAULT_CONFFILE "../sample.conf"
+
+char *startpoint = DEFAULT_STARTPOINT;
 
 struct nlist {
 	char name[MAXNAMLEN];
@@ -95,7 +99,7 @@ static void *walkthr(void* arg) {
 	cb_arg.buck = buck;
 	cb_arg.debug = p9_handle->debug;
 	cb_arg.tail = bucket_get(buck);
-	strncpy(cb_arg.tail->name, STARTPOINT, MAXNAMLEN);
+	strncpy(cb_arg.tail->name, startpoint, MAXNAMLEN);
 	cb_arg.tail->next = NULL;
 	cb_arg.tail->pfid = p9_handle->root_fid;
 
@@ -140,6 +144,13 @@ static void *walkthr(void* arg) {
 	pthread_exit(NULL);	
 }
 
+void print_help(char **argv) {
+	printf("Usage: %s [-c conf] [-s startpoint] [-t thread-num]\n", argv[0]);
+	printf(	"Optional arguments:\n"
+		"	-t, --threads num: number of operating threads\n"
+		"	-c, --conf file: conf file to use\n"
+		"	-s, --start[point] dir: do the walk from there\n");
+}
 
 int main(int argc, char **argv) {
 	int rc, i;
@@ -147,17 +158,66 @@ int main(int argc, char **argv) {
 
 	pthread_t *thrid;
 	int thrnum = 0;
+	char *conffile = DEFAULT_CONFFILE;
 
-	if (argc >= 2) {
-		thrnum=atoi(argv[1]);
+	static struct option long_options[] = {
+		{ "conf",	required_argument,	0,		'c' },
+		{ "startpoint",	required_argument,	0,		's' },
+		{ "start",	required_argument,	0,		's' },
+		{ "help",	no_argument,		0,		'h' },
+		{ "threads",	required_argument,	0,		't' },
+		{ 0,		0,			0,		 0  }
+	};
+
+	int option_index = 0;
+	int op;
+
+	while ((op = getopt_long(argc, argv, "@c:s:ht:", long_options, &option_index)) != -1) {
+		switch(op) {
+			case '@':
+				printf("%s compiled on %s at %s\n", argv[0], __DATE__, __TIME__);
+				printf("Release = %s\n", VERSION);
+				printf("Release comment = %s\n", VERSION_COMMENT);
+				printf("Git HEAD = %s\n", _GIT_HEAD_COMMIT ) ;
+				printf("Git Describe = %s\n", _GIT_DESCRIBE ) ;
+				exit(0);
+			case 'h':
+				print_help(argv);
+				exit(0);
+			case 's':
+				startpoint = optarg;
+				break;
+			case 'c':
+				conffile = optarg;
+				break;
+			case 't':
+				thrnum = atoi(optarg);
+				if (thrnum == 0) {
+					printf("invalid thread number %s, using default\n", optarg);
+					thrnum = DEFAULT_THRNUM;
+				}
+				break;
+			default:
+				ERROR_LOG("Failed to parse arguments");
+				print_help(argv);
+				exit(EINVAL);
+		}
 	}
+
+	if (optind < argc) {
+		for (i = optind; i < argc; i++)
+			printf ("Leftover argument %s\n", argv[i]);
+		print_help(argv);
+		exit(EINVAL);
+	}
+
 	if (thrnum == 0) {
 		thrnum = DEFAULT_THRNUM;
 	}
 
 	thrid = malloc(sizeof(pthread_t)*thrnum);
 
-        rc = p9_init(&p9_handle, "../sample.conf");
+        rc = p9_init(&p9_handle, conffile);
         if (rc) {
                 ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
                 return rc;

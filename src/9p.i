@@ -107,9 +107,9 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 
 		return fid;
 	}
-	struct p9_fid *open(char *path, uint32_t mode, uint32_t flags) {
+	struct p9_fid *open(char *path, uint32_t flags, uint32_t mode) {
 		struct p9_fid *fid;
-		if ((errno = p9l_open($self, &fid, path, mode, flags, 0)))
+		if ((errno = p9l_open($self, &fid, path, flags, mode, 0)))
 			return NULL;
 
 		return fid;
@@ -229,17 +229,17 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 };
 
 %feature("autodoc", "file handle. Use to read/write, etc.
-p9_fid(p9_handle, path[, mode, flags])
+p9_fid(p9_handle, path[, flags, mode])
 
 On creation it's either not opened (if so, open later) or if open flags are set it's opened directly.
 flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
 %extend p9_fid {
-	p9_fid(struct p9_handle *p9_handle, char *path, uint32_t mode = 0, uint32_t flags = 0) {
+	p9_fid(struct p9_handle *p9_handle, char *path, uint32_t flags = 0, uint32_t mode = 0) {
 		struct p9_fid *fid;
 		if (flags == 0) {
 			errno = p9l_walk(p9_handle, path[0] == '/' ? p9_handle->root_fid : p9_handle->cwd, path, &fid, flags);
 		} else {
-			errno = p9l_open(p9_handle, &fid, path, mode, flags, 0);
+			errno = p9l_open(p9_handle, &fid, path, flags, mode, 0);
 		}
 		if (errno)
 			return NULL;

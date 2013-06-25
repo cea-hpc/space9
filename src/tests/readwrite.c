@@ -79,7 +79,7 @@ static void *readwritethr(void* arg) {
 
 	do {
 		/* get a fid to write in */
-		rc = p9l_open(p9_handle, &fid, filename, 0640 , O_CREAT|O_TRUNC|O_RDWR, 0);
+		rc = p9l_open(p9_handle, &fid, filename, O_CREAT|O_TRUNC|O_RDWR, 0640, 0);
 		if (rc) {
 			printf("couldn't open file %s, error: %s (%d)\n", filename, strerror(rc), rc);
 			break;
@@ -262,6 +262,12 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	if (optind < argc) {
+		for (i = optind; i < argc; i++)
+			printf ("Leftover argument %s\n", argv[i]);
+		print_help(argv);
+		exit(EINVAL);
+	}
 
 	thrid = malloc(sizeof(pthread_t)*thrnum);
 
