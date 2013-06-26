@@ -69,7 +69,8 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 	errno = 0;
 	$action
 	if (errno) {
-		return PyErr_SetFromErrno(PyExc_IOError);
+		PyErr_SetFromErrno(PyExc_IOError);
+		SWIG_fail;
 	}
 }
 
@@ -295,6 +296,12 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
 	}
 	~p9_fid() {
 		errno = p9p_clunk($self->p9_handle, &$self);
+	}
+	void clunk() {
+		p9p_clunk($self->p9_handle, &$self);
+	}
+	void unlink() {
+		p9l_rm($self->p9_handle, $self->path);
 	}
        void open(uint32_t flags) {
                if ($self->openflags == 0)
