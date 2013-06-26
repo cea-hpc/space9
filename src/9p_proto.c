@@ -1050,7 +1050,7 @@ int p9p_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char *target, 
 
 	rc = p9pz_readlink(p9_handle, fid, &ztarget, &data);
 	if (rc >= 0) {
-		strncpy(target, ztarget, MIN(size-1, rc));
+		memcpy(target, ztarget, MIN(size-1, rc));
 		target[MIN(size-1,rc)] = '\0';
 		p9c_putreply(p9_handle, data);
 	}
@@ -1340,7 +1340,7 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, siz
 	rc = p9pz_read(p9_handle, fid, &zbuf, count, offset, &data);
 
 	if (rc >= 0) {
-		strncpy(buf, zbuf, MIN(count, rc+1));
+		memcpy(buf, zbuf, MIN(count, rc+1));
 		p9c_putreply(p9_handle, data);
 	}
 
@@ -1559,6 +1559,7 @@ int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid
 	switch(msgtype) {
 		case P9_RXATTRWALK:
 			p9_getvalue(cursor, *psize, uint64_t);
+			newfid->openflags = RDFLAG;
 			*pnewfid = newfid;
 			break;
 
@@ -1628,6 +1629,7 @@ int p9p_xattrcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name,
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RXATTRCREATE:
+			fid->openflags = WRFLAG;
 			break;
 
 		case P9_RERROR:

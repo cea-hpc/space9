@@ -206,6 +206,7 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	fid->p9_handle = p9_handle;
 	fid->fid = fid_i;
 	fid->openflags = 0;
+	fid->offset = 0L;
 	*pfid = fid;
 	return 0;
 }

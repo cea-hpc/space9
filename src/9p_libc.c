@@ -625,7 +625,7 @@ ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count) {
 
 	/* sanity checks */
 	if (fid == NULL || buffer == NULL || (fid->openflags & RDFLAG) == 0 )
-		return EINVAL;
+		return -EINVAL;
 
 	do {
 		rc = p9p_read(fid->p9_handle, fid, buffer + total, count - total, fid->offset);
@@ -649,7 +649,7 @@ ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt) {
 	int i;
 
 	if (iovcnt < 0) {
-		return EINVAL;
+		return -EINVAL;
 	}
 
 	for (i = 0; i < iovcnt; i++) {
@@ -665,15 +665,15 @@ ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt) {
 	return rc;
 }
 
-ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg) {
+ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void *cb_arg) {
 	int rc = 0;
 	struct p9_fid *fid;
 	uint64_t offset = 0LL;
 	int count;
 
-	rc = p9l_open(p9_handle, &fid, arg, 0, 0, 0);
+	rc = p9l_open(p9_handle, &fid, path, 0, 0, 0);
 	if (rc) {
-		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", arg, strerror(rc), rc);
+		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", path, strerror(rc), rc);
 		return -rc;
 	}
 
@@ -695,3 +695,133 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *
 	p9p_clunk(p9_handle, &fid);
 	return rc;
 }
+
+/* field = NULL or "" -> get the list.
+returned size is the size of the xattr, NOT the number of bytes written.
+if value > count, string was truncated and buf has been forcibly NUL-terminated. */
+ssize_t p9l_xattrget(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count) {
+	ssize_t rc;
+	struct p9_fid *fid = NULL;
+
+	/* Sanity check */
+	if (p9_handle == NULL || path == NULL)
+		return -EINVAL;
+
+	do {
+		rc = p9l_rootwalk(p9_handle, path, &fid, 0);
+		if (rc)
+			break;
+
+		rc = p9l_fxattrget(fid, field, buf, count);
+	} while (0);
+
+	p9p_clunk(p9_handle, &fid);
+
+	return rc;
+}
+
+/* flags: XATTR_CREATE (fail if exist), XATTR_REPLACE (fails if not exist)
+ attribute will be removed if buf is NULL or "" */
+ssize_t p9l_xattrset(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count, int flags) {
+	ssize_t rc;
+	struct p9_fid *fid = NULL;
+
+	/* Sanity check */
+	if (p9_handle == NULL || path == NULL)
+		return -EINVAL;
+
+	do {
+		rc = p9l_rootwalk(p9_handle, path, &fid, 0);
+		if (rc)
+			break;
+
+		rc = p9l_fxattrset(fid, field, buf, count, flags);
+	} while (0);
+
+	p9p_clunk(p9_handle, &fid);
+
+	return rc;
+}
+
+ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count) {
+	ssize_t rc;
+	uint64_t size;
+	size_t realcount;
+	struct p9_handle *p9_handle;
+	struct p9_fid *attrfid = NULL;
+
+	if (fid == NULL || buf == NULL || count == 0)
+		return -EINVAL;
+
+	p9_handle = fid->p9_handle;
+
+	do {
+		rc = p9p_xattrwalk(p9_handle, fid, &attrfid, field, &size);
+		if (rc) {
+			INFO_LOG(p9_handle->debug, "xattrwalk failed: %s (%zd)", strerror(rc), rc);
+			rc = -rc;
+			break;
+		}
+
+		realcount = MIN(size, count-1);
+
+		rc = p9l_read(attrfid, buf, realcount);
+		if (rc < 0) {
+			INFO_LOG(p9_handle->debug, "read failed: %s (%zd)", strerror(-rc), -rc);
+			break;
+		} else if (rc != realcount) {
+			INFO_LOG(p9_handle->debug, "read screwup, didn't read everything (expected %zu, got %zu)", realcount, rc);
+			buf[rc] = '\0';
+			//rc = -EIO;
+			break;
+		}
+
+		buf[realcount] = '\0';
+	} while (0);
+
+	p9p_clunk(p9_handle, &attrfid);
+
+	return (rc < 0 ? rc : size);
+}
+ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, int flags) {
+	ssize_t rc;
+	struct p9_handle *p9_handle;
+	struct p9_fid *attrfid = NULL;
+
+	if (fid == NULL || field == NULL || (count != 0 && buf == NULL))
+		return -EINVAL;
+
+	p9_handle = fid->p9_handle;
+
+	do {
+		rc = p9p_walk(p9_handle, fid, NULL, &attrfid);
+		if (rc) {
+			INFO_LOG(p9_handle->debug, "clone walk failed: %s (%zd)", strerror(rc), rc);
+			rc = -rc;
+			break;
+		}
+
+		rc = p9p_xattrcreate(p9_handle, attrfid, field, count, flags);
+		if (rc) {
+			INFO_LOG(p9_handle->debug, "xattrcreate failed: %s (%zd)", strerror(rc), rc);
+			rc = -rc;
+			break;
+		}
+
+		if (count) {
+			rc = p9l_write(attrfid, buf, count);
+			if (rc < 0) {
+				INFO_LOG(p9_handle->debug, "write failed: %s (%zd)", strerror(-rc), -rc);
+				break;
+			} else if (rc != count) {
+				INFO_LOG(p9_handle->debug, "write screwup, didn't write everything (expected %zu, got %zu)", count, rc);
+				rc = -EIO;
+				break;
+			}
+		}
+	} while (0);
+
+	p9p_clunk(p9_handle, &attrfid);
+
+	return rc;
+};

@@ -43,6 +43,9 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 #define O_APPEND          02000
 /* from /usr/include/fcntl.h */
 # define AT_SYMLINK_NOFOLLOW	0x100	/* Do not follow symbolic links.  */
+/* from /usr/include/attr/xattr.h */
+#define XATTR_CREATE  0x1       /* set value, fail if attr already exists */
+#define XATTR_REPLACE 0x2       /* set value, fail if attr does not exist */
 
 
 
@@ -201,6 +204,50 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	void fseek(struct p9_fid *fid, int64_t offset, int whence) {
 		errno = p9l_fseek(fid, offset, whence);
 	}
+	PyObject *xattrget(char *path, char *field, size_t count) {
+		ssize_t rc;
+		char *buf = malloc(count);
+		PyObject *pystr = NULL;
+
+		rc = p9l_xattrget($self, path, field, buf, count);
+		if (rc >= 0) {
+			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
+		} else {
+			errno = -rc;
+		}
+
+		return pystr;
+	}
+	size_t xattrset(char *path, char *field, char *buf, int flags = 0) {
+		ssize_t rc;
+		rc = p9l_xattrset($self, path, field, buf, strlen(buf), flags);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
+	}
+	PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count) {
+		ssize_t rc;
+		char *buf = malloc(count);
+		PyObject *pystr = NULL;
+
+		rc = p9l_fxattrget(fid, field, buf, count);
+		if (rc >= 0) {
+			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
+		} else {
+			errno = -rc;
+		}
+
+		return pystr;
+	}
+	size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags = 0) {
+		ssize_t rc;
+		rc = p9l_fxattrset(fid, field, buf, strlen(buf), flags);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
+	}
 	PyObject *read(struct p9_fid *fid, size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
@@ -298,8 +345,8 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 		}
 		return pystr;
 	}
-	int write(char *buf, size_t count) {
-		int rc;
+	size_t write(char *buf, size_t count) {
+		ssize_t rc;
 		rc = p9l_write($self, buf, count);
 		if (rc < 0) {
 			errno = -rc;
@@ -312,5 +359,27 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 			return NULL;
 
 		return fid;
+	}
+	PyObject *xattrget(char *field, size_t count) {
+		ssize_t rc;
+		char *buf = malloc(count);
+		PyObject *pystr = NULL;
+
+		rc = p9l_fxattrget($self, field, buf, count);
+		if (rc >= 0) {
+			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
+		} else {
+			errno = -rc;
+		}
+
+		return pystr;
+	}
+	size_t xattrset(char *field, char *buf, int flags = 0) {
+		ssize_t rc;
+		rc = p9l_fxattrset($self, field, buf, strlen(buf), flags);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return rc;
 	}
 }

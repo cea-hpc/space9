@@ -834,6 +834,11 @@ int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gi
 int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
 int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+ssize_t p9l_xattrget(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count);
+ssize_t p9l_xattrset(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count, int flags);
+ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count);
+ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, int flags);
+
 
 static inline int p9l_fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	struct p9_setattr attr;
