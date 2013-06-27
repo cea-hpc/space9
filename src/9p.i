@@ -22,6 +22,14 @@
 %module(docstring="Space9 userspace 9P library. Everyting starts with a p9_handle('conffile').") space9
 %{
 #include "9p_internals.h"
+
+
+struct fid {
+	struct p9_fid *ptr;
+	PyObject *handle_obj;
+	int valid;
+};
+
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
 %}
 %feature("autodoc", "1");
@@ -48,11 +56,38 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 #define XATTR_REPLACE 0x2       /* set value, fail if attr does not exist */
 
 
+%typemap(out) struct fid * %{
+	$result = SWIG_NewPointerObj(SWIG_as_voidptr($1), SWIGTYPE_p_fid, SWIG_POINTER_OWN |  0 );
+	$1->handle_obj = self;
+	Py_INCREF(self);
+%}
+%typemap(out) struct fid *fid %{
+	$result = SWIG_NewPointerObj(SWIG_as_voidptr($1), SWIGTYPE_p_fid, SWIG_BUILTIN_INIT |  0 );
+	$1->handle_obj = obj1;
+	Py_INCREF(obj1);
+%}
+struct fid {
+	struct p9_fid *ptr;
+	PyObject *handle_obj;
+	int valid;
+};
 
 /* dummy p9_handle struct (it's in internals, not in space9.h - this lets us redefine "debug" and "umask" as methods) */
 struct p9_handle {
 	msk_trans_t *trans;
 };
+
+%exception {
+	errno = 0;
+	$action
+	if (errno) {
+		PyErr_SetFromErrno(PyExc_IOError);
+		SWIG_fail;
+	}
+}
+
+%newobject p9_handle::open;
+%newobject p9_handle::walk;
 
 %inline %{
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
@@ -65,14 +100,6 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 }
 %}
 
-%exception {
-	errno = 0;
-	$action
-	if (errno) {
-		PyErr_SetFromErrno(PyExc_IOError);
-		SWIG_fail;
-	}
-}
 
 %feature("autodoc", "p9_handle is the filesystem handle. Use it to open a file, list directories, etc.
 Most fd-operations can be done on fids once you have one (walk or open)") p9_handle;
@@ -104,19 +131,25 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	void cd(char *path) {
 		errno = p9l_cd($self, path);
 	}
-	struct p9_fid *walk(char *path, int flags = 0) {
+	struct fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
 		if ((errno = p9l_walk($self, path[0] == '/' ? $self->root_fid : $self->cwd, path, &fid, flags)))
 			return NULL;
 
-		return fid;
+		struct fid *wrap = malloc(sizeof(struct fid));
+		wrap->valid = 1;
+		wrap->ptr = fid;
+		return wrap;
 	}
-	struct p9_fid *open(char *path, uint32_t flags, uint32_t mode) {
+	struct fid *open(char *path, uint32_t flags, uint32_t mode) {
 		struct p9_fid *fid;
 		if ((errno = p9l_open($self, &fid, path, flags, mode, 0)))
 			return NULL;
 
-		return fid;
+		struct fid *wrap = malloc(sizeof(struct fid));
+		wrap->valid = 1;
+		wrap->ptr = fid;
+		return wrap;
 	}
 	void fsync(struct p9_fid *fid) {
 		errno = p9l_fsync(fid);
@@ -276,13 +309,14 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	}
 };
 
+
 %feature("autodoc", "file handle. Use to read/write, etc.
 p9_fid(p9_handle, path[, flags, mode])
 
 On creation it's either not opened (if so, open later) or if open flags are set it's opened directly.
-flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
-%extend p9_fid {
-	p9_fid(struct p9_handle *p9_handle, char *path, uint32_t flags = 0, uint32_t mode = 0) {
+flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
+%extend fid {
+	fid(struct p9_handle *p9_handle, char *path, uint32_t flags = 0, uint32_t mode = 0) {
 		struct p9_fid *fid;
 		if (flags == 0) {
 			errno = p9l_walk(p9_handle, path[0] == '/' ? p9_handle->root_fid : p9_handle->cwd, path, &fid, flags);
@@ -292,35 +326,56 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
 		if (errno)
 			return NULL;
 
-		return fid;
+		struct fid *wrap = malloc(sizeof(struct fid));
+		wrap->valid = 1;
+		wrap->ptr = fid;
+		return wrap;
 	}
-	~p9_fid() {
-		errno = p9p_clunk($self->p9_handle, &$self);
+	~fid() {
+		if ($self->valid == 1) {
+			errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
+			Py_DECREF($self->handle_obj);
+		}
+		free($self);
 	}
+%exception {
+	errno = 0;
+	if (arg1->valid == 0) {
+		PyErr_SetString(PyExc_IOError, "invalid fid");
+		SWIG_fail;
+	}
+	$action
+	if (errno) {
+		PyErr_SetFromErrno(PyExc_IOError);
+		SWIG_fail;
+	}
+}
 	void clunk() {
-		p9p_clunk($self->p9_handle, &$self);
+		p9p_clunk($self->ptr->p9_handle, &$self->ptr);
+		$self->valid = 0;
+		Py_DECREF($self->handle_obj);
 	}
 	void unlink() {
-		p9l_rm($self->p9_handle, $self->path);
+		p9l_rm($self->ptr->p9_handle, $self->ptr->path);
 	}
        void open(uint32_t flags) {
-               if ($self->openflags == 0)
-                       errno = p9p_lopen($self->p9_handle, $self, flags, NULL);
+               if ($self->ptr->openflags == 0)
+                       errno = p9p_lopen($self->ptr->p9_handle, $self->ptr, flags, NULL);
 	}
 	void chown(uint32_t uid, uint32_t gid) {
-		errno = p9l_fchown($self, uid, gid);
+		errno = p9l_fchown($self->ptr, uid, gid);
 	}
 	void chmod(uint32_t mode) {
-		errno = p9l_fchmod($self, mode);
+		errno = p9l_fchmod($self->ptr, mode);
 	}
 	void fsync() {
-		errno = p9l_fsync($self);
+		errno = p9l_fsync($self->ptr);
 	}
 	PyObject *stat() {
 		struct p9_getattr attr;
 		PyObject *ret = NULL;
 		attr.valid = P9_GETATTR_BASIC;
-		errno = p9l_fstat($self, &attr);
+		errno = p9l_fstat($self->ptr, &attr);
 		if (!errno) {
 			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
@@ -333,7 +388,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") p9_fid;
 %feature("autodoc", "seek(p9_fid self, int64_t offset, int whence)
 whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 	void seek(int64_t offset, int whence) {
-		errno = p9l_fseek($self, offset, whence);
+		errno = p9l_fseek($self->ptr, offset, whence);
 	}
 	PyObject *read(size_t count) {
 		int rc;
@@ -341,12 +396,12 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 		char *zbuf;
 		msk_data_t *data;
 
-		rc = p9pz_read($self->p9_handle, $self, &zbuf, count, $self->offset, &data);
+		rc = p9pz_read($self->ptr->p9_handle, $self->ptr, &zbuf, count, $self->ptr->offset, &data);
 
 		if (rc >= 0) {
 			pystr = PyString_FromStringAndSize(zbuf, MIN(count, rc));
-			p9c_putreply($self->p9_handle, data);
-			$self->offset += rc;
+			p9c_putreply($self->ptr->p9_handle, data);
+			$self->ptr->offset += rc;
 		} else {
 			errno = -rc;
 		}
@@ -354,7 +409,7 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 	}
 	size_t write(char *buf, size_t count) {
 		ssize_t rc;
-		rc = p9l_write($self, buf, count);
+		rc = p9l_write($self->ptr, buf, count);
 		if (rc < 0) {
 			errno = -rc;
 		}
@@ -362,7 +417,7 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 	}
 	struct p9_fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
-		if ((errno = p9l_walk($self->p9_handle, $self, path, &fid, flags)))
+		if ((errno = p9l_walk($self->ptr->p9_handle, $self->ptr, path, &fid, flags)))
 			return NULL;
 
 		return fid;
@@ -372,7 +427,7 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 		char *buf = malloc(count);
 		PyObject *pystr = NULL;
 
-		rc = p9l_fxattrget($self, field, buf, count);
+		rc = p9l_fxattrget($self->ptr, field, buf, count);
 		if (rc >= 0) {
 			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
 		} else {
@@ -383,10 +438,19 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 	}
 	size_t xattrset(char *field, char *buf, int flags = 0) {
 		ssize_t rc;
-		rc = p9l_fxattrset($self, field, buf, strlen(buf), flags);
+		rc = p9l_fxattrset($self->ptr, field, buf, strlen(buf), flags);
 		if (rc < 0) {
 			errno = -rc;
 		}
 		return rc;
+	}
+	char *path() {
+		return $self->ptr->path;
+	}
+	uint64_t offset() {
+		return $self->ptr->offset;
+	}
+	int openflags() {
+		return $self->ptr->openflags;
 	}
 }
