@@ -267,6 +267,8 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 
 		rc = p9l_fxattrget(fid, field, buf, count);
 		if (rc >= 0) {
+			if ((field == NULL || field[0]=='\0') && rc > 0)
+				rc--;
 			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
 		} else {
 			errno = -rc;
@@ -429,6 +431,8 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 
 		rc = p9l_fxattrget($self->ptr, field, buf, count);
 		if (rc >= 0) {
+			if ((field == NULL || field[0]=='\0') && rc > 0)
+				rc--;
 			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
 		} else {
 			errno = -rc;
