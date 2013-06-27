@@ -509,26 +509,27 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 		return rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
-	if (rc != 0 || data == NULL)
-		return rc;
 
-	cursor = data->data;
-	p9_getheader(cursor, msgtype);
-	switch(msgtype) {
-		case P9_RCLUNK:
-			/* nothing else */
-			break;
+	if (rc == 0 && data != NULL) {
+		cursor = data->data;
+		p9_getheader(cursor, msgtype);
+		switch(msgtype) {
+			case P9_RCLUNK:
+				/* nothing else */
+				break;
 
-		case P9_RERROR:
-			p9_getvalue(cursor, rc, uint32_t);
-			break;
+			case P9_RERROR:
+				p9_getvalue(cursor, rc, uint32_t);
+				break;
 
-		default:
-			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TCLUNK, tag);
-			rc = EIO;
+			default:
+				ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TCLUNK, tag);
+				rc = EIO;
+		}
+
+		p9c_putreply(p9_handle, data);
 	}
 
-	p9c_putreply(p9_handle, data);
 	/* fid is invalid anyway */
 	p9c_putfid(p9_handle, pfid);
 
@@ -575,26 +576,27 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 		return rc;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
-	if (rc != 0 || data == NULL)
-		return rc;
 
-	cursor = data->data;
-	p9_getheader(cursor, msgtype);
-	switch(msgtype) {
-		case P9_RREMOVE:
-			/* nothing else */
-			break;
+	if (rc == 0 && data != NULL) {
+		cursor = data->data;
+		p9_getheader(cursor, msgtype);
+		switch(msgtype) {
+			case P9_RREMOVE:
+				/* nothing else */
+				break;
 
-		case P9_RERROR:
-			p9_getvalue(cursor, rc, uint32_t);
-			break;
+			case P9_RERROR:
+				p9_getvalue(cursor, rc, uint32_t);
+				break;
 
-		default:
-			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TREMOVE, tag);
-			rc = EIO;
+			default:
+				ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TREMOVE, tag);
+				rc = EIO;
+		}
+
+		p9c_putreply(p9_handle, data);
 	}
 
-	p9c_putreply(p9_handle, data);
 	/* fid is invalid anyway */
 	p9c_putfid(p9_handle, pfid);
 

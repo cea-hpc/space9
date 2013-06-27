@@ -90,12 +90,16 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
  */
 int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
 	// We need more recv buffers ready than requests pending
+	int rc;
 
 	INFO_LOG(p9_handle->full_debug, "send request for tag %u", tag);
 
-	p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
+	rc = p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 
-	return 0;
+	if (rc)
+		p9c_abortrequest(p9_handle, data, tag);
+
+	return rc;
 }
 
 
@@ -138,10 +142,14 @@ int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag
 int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) {
 
 	pthread_mutex_lock(&p9_handle->recv_lock);
-	while (p9_handle->tags[tag].rdata == NULL) {
+	while (p9_handle->tags[tag].rdata == NULL && p9_handle->trans->state == MSK_CONNECTED) {
 		pthread_cond_wait(&p9_handle->recv_cond, &p9_handle->recv_lock);
 	}
 	pthread_mutex_unlock(&p9_handle->recv_lock);
+
+	if (p9_handle->trans->state != MSK_CONNECTED) {
+		return ECONNRESET;
+	}
 
 	*pdata = p9_handle->tags[tag].rdata;
 	pthread_mutex_lock(&p9_handle->tag_lock);

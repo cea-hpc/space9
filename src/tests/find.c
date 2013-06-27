@@ -122,6 +122,10 @@ static void *walkthr(void* arg) {
 		}
 
 		rc = p9p_lopen(p9_handle, fid, O_RDONLY, NULL);
+		if (rc) {
+			printf("open failed, rc: %s (%d)\n", strerror(rc), rc);
+			break;
+		}
 
 		cb_arg.tail->name[0] = '\0';
 		cb_arg.tail->pfid = fid;

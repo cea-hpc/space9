@@ -27,7 +27,6 @@
 struct fid {
 	struct p9_fid *ptr;
 	PyObject *handle_obj;
-	int valid;
 };
 
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
@@ -69,7 +68,6 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 struct fid {
 	struct p9_fid *ptr;
 	PyObject *handle_obj;
-	int valid;
 };
 
 /* dummy p9_handle struct (it's in internals, not in space9.h - this lets us redefine "debug" and "umask" as methods) */
@@ -137,7 +135,6 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
-		wrap->valid = 1;
 		wrap->ptr = fid;
 		return wrap;
 	}
@@ -147,7 +144,6 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
-		wrap->valid = 1;
 		wrap->ptr = fid;
 		return wrap;
 	}
@@ -329,12 +325,11 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
-		wrap->valid = 1;
 		wrap->ptr = fid;
 		return wrap;
 	}
 	~fid() {
-		if ($self->valid == 1) {
+		if ($self->ptr != NULL) {
 			errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
 			Py_DECREF($self->handle_obj);
 		}
@@ -342,7 +337,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 	}
 %exception {
 	errno = 0;
-	if (arg1->valid == 0) {
+	if (arg1->ptr == NULL) {
 		PyErr_SetString(PyExc_IOError, "invalid fid");
 		SWIG_fail;
 	}
@@ -353,9 +348,11 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 	}
 }
 	void clunk() {
-		p9p_clunk($self->ptr->p9_handle, &$self->ptr);
-		$self->valid = 0;
-		Py_DECREF($self->handle_obj);
+		errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
+
+		/* it's possible clunk failed before sending the message, if so don't decref */
+		if ($self->ptr == NULL)
+			Py_DECREF($self->handle_obj);
 	}
 	void unlink() {
 		p9l_rm($self->ptr->p9_handle, $self->ptr->path);
