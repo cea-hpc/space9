@@ -30,6 +30,9 @@ struct fid {
 };
 
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name);
+PyObject *fxattrlist(struct p9_fid *fid, size_t count);
+PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count);
+size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags);
 %}
 %feature("autodoc", "1");
 
@@ -96,6 +99,53 @@ int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_
 
 	return 0;
 }
+
+PyObject *fxattrlist(struct p9_fid *fid, size_t count) {
+	ssize_t rc;
+	char *buf = malloc(count);
+	char *cur;
+	PyObject *list = PyList_New(0);
+	int len;
+	PyObject *str;
+
+	rc = p9l_fxattrlist(fid, buf, count);
+	if (rc >= 0) {
+		cur = buf;
+		while (cur - buf < rc) {
+			len = strlen(cur);
+			str = PyString_FromStringAndSize(cur, len);
+			PyList_Append(list, str);
+			Py_DECREF(str);
+			cur += len+1;
+		}
+	} else {
+		errno = -rc;
+	}
+	return list;
+}
+PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count) {
+	ssize_t rc;
+	char *buf = malloc(count);
+	PyObject *pystr = NULL;
+	rc = p9l_fxattrget(fid, field, buf, count);
+	if (rc >= 0) {
+		if ((field == NULL || field[0]=='\0') && rc > 0)
+			rc--;
+		pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
+	} else {
+		errno = -rc;
+	}
+	return pystr;
+}
+size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags) {
+	ssize_t rc;
+	rc = p9l_fxattrset(fid, field, buf, strlen(buf), flags);
+	if (rc < 0) {
+		errno = -rc;
+	}
+	return rc;
+}
+
 %}
 
 
@@ -256,29 +306,14 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 		}
 		return rc;
 	}
+	PyObject *fxattrlist(struct p9_fid *fid, size_t count) {
+		return fxattrlist(fid, count);
+	}
 	PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count) {
-		ssize_t rc;
-		char *buf = malloc(count);
-		PyObject *pystr = NULL;
-
-		rc = p9l_fxattrget(fid, field, buf, count);
-		if (rc >= 0) {
-			if ((field == NULL || field[0]=='\0') && rc > 0)
-				rc--;
-			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
-		} else {
-			errno = -rc;
-		}
-
-		return pystr;
+		return fxattrget(fid, field, count);
 	}
 	size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags = 0) {
-		ssize_t rc;
-		rc = p9l_fxattrset(fid, field, buf, strlen(buf), flags);
-		if (rc < 0) {
-			errno = -rc;
-		}
-		return rc;
+		return fxattrset(fid, field, buf, flags);
 	}
 	PyObject *read(struct p9_fid *fid, size_t count) {
 		int rc;
@@ -421,29 +456,14 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 
 		return fid;
 	}
+	PyObject *xattrlist(size_t count) {
+		return fxattrlist($self->ptr, count);
+	}
 	PyObject *xattrget(char *field, size_t count) {
-		ssize_t rc;
-		char *buf = malloc(count);
-		PyObject *pystr = NULL;
-
-		rc = p9l_fxattrget($self->ptr, field, buf, count);
-		if (rc >= 0) {
-			if ((field == NULL || field[0]=='\0') && rc > 0)
-				rc--;
-			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
-		} else {
-			errno = -rc;
-		}
-
-		return pystr;
+		return fxattrget($self->ptr, field, count);
 	}
 	size_t xattrset(char *field, char *buf, int flags = 0) {
-		ssize_t rc;
-		rc = p9l_fxattrset($self->ptr, field, buf, strlen(buf), flags);
-		if (rc < 0) {
-			errno = -rc;
-		}
-		return rc;
+		return fxattrset($self->ptr, field, buf, flags);
 	}
 	char *path() {
 		return $self->ptr->path;

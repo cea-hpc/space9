@@ -840,6 +840,14 @@ ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count);
 ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, int flags);
 
 
+static inline ssize_t p9l_xattrlist(struct p9_handle *p9_handle, char *path, char *buf, size_t count) {
+	return p9l_xattrget(p9_handle, path, NULL, buf, count);
+}
+static inline ssize_t p9l_fxattrlist(struct p9_fid *fid, char *buf, size_t count) {
+	return p9l_fxattrget(fid, NULL, buf, count);
+}
+
+
 static inline int p9l_fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	struct p9_setattr attr;
 	memset(&attr, 0, sizeof(struct p9_setattr));
