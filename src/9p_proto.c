@@ -1176,7 +1176,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	p9_initcursor(cursor, data->data, P9_TREADDIR, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
 	p9_setvalue(cursor, *poffset, uint64_t);
-	/* ROOM_READDIR is the size of the readdir reply header, and keep one more for the final 0 we write */
+	/* ROOM_RREADDIR is the size of the readdir reply header, and keep one more for the final 0 we write */
 	p9_setvalue(cursor, p9_handle->msize - P9_ROOM_RREADDIR - 1, uint32_t);
 	p9_setmsglen(cursor, data);
 
@@ -1271,8 +1271,12 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, 
 	if (rc != 0 || data == NULL)
 		return -rc;
 
-	if (count > p9_handle->msize - P9_ROOM_RREAD)
+	if (count > p9_handle->msize - P9_ROOM_RREAD) {
 		count = p9_handle->msize - P9_ROOM_RREAD;
+		/* align IO if possible */
+		if (count > 1024*1024 && count < 1025*1024)
+			count = 1024*1024;
+	}
 
 	p9_initcursor(cursor, data->data, P9_TREAD, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -1379,8 +1383,12 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *
 	if (rc != 0 || header_data == NULL)
 		return -rc;
 
-	if (data->size > p9_handle->msize - P9_ROOM_TWRITE)
+	if (data->size > p9_handle->msize - P9_ROOM_TWRITE) {
 		data->size = p9_handle->msize - P9_ROOM_TWRITE;
+		/* align IO */
+		if (data->size > 1024*1024 && data->size < 1025*1024)
+			data->size = 1024*1024;
+	}
 
 	p9_initcursor(cursor, header_data->data, P9_TWRITE, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
