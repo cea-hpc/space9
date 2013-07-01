@@ -118,16 +118,6 @@ int p9l_clunk(struct p9_fid **pfid) {
 	return p9p_clunk((*pfid)->p9_handle, pfid);
 }
 
-int p9l_remove(struct p9_fid **pfid) {
-	if (!pfid || !*pfid)
-		return EINVAL;
-
-	if ((*pfid)->fid == (*pfid)->p9_handle->root_fid->fid || (*pfid)->fid == (*pfid)->p9_handle->cwd->fid)
-		return 0;
-
-	return p9p_remove((*pfid)->p9_handle, pfid);
-}
-
 int p9l_cd(struct p9_handle *p9_handle, char *path) {
 	char *canon_path;
 	struct p9_fid *fid;
@@ -394,7 +384,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 	return rc;
 }
 
-int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t flags, uint32_t mode, uint32_t gid) {
+int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid) {
 	char *canon_path, *dirname, *basename;
 	struct p9_fid *fid = NULL;
 	struct p9_setattr attr;
@@ -554,10 +544,6 @@ int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence) {
 	return rc;
 }
 
-uint64_t p9l_ftell(struct p9_fid *fid) {
-	return fid->offset;
-}
-
 ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 	ssize_t rc;
 	msk_data_t data;
@@ -671,7 +657,7 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void 
 	uint64_t offset = 0LL;
 	int count;
 
-	rc = p9l_open(p9_handle, &fid, path, 0, 0, 0);
+	rc = p9l_open(p9_handle, path, &fid, 0, 0, 0);
 	if (rc) {
 		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", path, strerror(rc), rc);
 		return -rc;

@@ -208,7 +208,7 @@ flags are open flags (both O_RDONLY/O_WRONLY/O_RDWR and O_CREAT, O_APPEND, O_TRU
 mode is file mode if created, umask is applied") open;
 	struct fid *open(char *path, uint32_t flags, uint32_t mode) {
 		struct p9_fid *fid;
-		if ((errno = p9l_open($self, &fid, path, flags, mode, 0)))
+		if ((errno = p9l_open($self, path, &fid, flags, mode, 0)))
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
@@ -372,7 +372,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		if (flags == 0) {
 			errno = p9l_walk(p9_handle, path[0] == '/' ? p9_handle->root_fid : p9_handle->cwd, path, &fid, flags);
 		} else {
-			errno = p9l_open(p9_handle, &fid, path, flags, mode, 0);
+			errno = p9l_open(p9_handle, path, &fid, flags, mode, 0);
 		}
 		if (errno)
 			return NULL;

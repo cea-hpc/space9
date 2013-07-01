@@ -818,36 +818,256 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 
 // 9p_libc.c
 
+/**
+ * @brief clunk
+ *
+ * @param [INOUT] pfid:		pointer to fid to clunk. will not clunk rootdir/cwd
+ * @return 0 on success, errno value on error.
+ */
 int p9l_clunk(struct p9_fid **pfid);
-int p9l_remove(struct p9_fid **pfid);
+
+/**
+ * @brief walk that follows symlinks unless called with AT_SYMLINK_NOFOLLOW
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    dfid:		walk from there
+ * @param [IN]    path:		path to walk to
+ * @param [OUT]   pfid:		pointer to new fid
+ * @param [IN]    flags:	0 or AT_SYMLINK_NOFOLLOW
+ * @return 0 on success, errno value on error.
+ */
 int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
-int p9l_open(struct p9_handle *p9_handle, struct p9_fid **pfid, char *path, uint32_t flags, uint32_t mode, uint32_t gid);
-ssize_t p9l_ls(struct p9_handle *p9_handle, char *arg, p9p_readdir_cb cb, void *cb_arg);
+
+/**
+ * @brief complex open by path call
+ * Handles new file creation (if O_CREAT) and other flags (O_TRUNC, O_APPEND)
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file, relative from working directory, absolute from mount point
+ * @param [OUT]   pfid:		pointer to new fid
+ * @param [IN]    flags:	bitwise flag with O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND
+ * @param [IN]    mode:		mode of new file if created. umask IS applied.
+ * @param [IN]    gid:		gid of new file if created.
+ * @return 0 on success, errno value on error.
+ */
+int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
+
+/**
+ * @brief ls by path
+ * opens directory given by path name and applies callback on each entry with custom arg
+ * see examples in 9p_shell_functions.c
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		dir path (relative from cwd/absolute from mount point)
+ * @param [IN]    cb:		callback function
+ * @param [IN]    cb_arg:	callback custom arg
+ * @return 0 on success, errno value on error.
+ */
+ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void *cb_arg);
+
+/**
+ * @brief cd
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [path]  path:		new working directory path (relative from cwd, absolute from mount point)
+ * @return 0 on success, errno value on error.
+ */
 int p9l_cd(struct p9_handle *p9_handle, char *path);
+
+/**
+ * @brief mv
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    src:		former file name
+ * @param [IN]    dst:		new file name
+ * @return 0 on success, errno value on error.
+ */
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
+
+/**
+ * @brief rm AND rmdir - there is NO distinction!!!
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file to remove
+ * @return 0 on success, errno value on error.
+ */
 int p9l_rm(struct p9_handle *p9_handle, char *path);
+
+/**
+ * @brief mkdir
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of new dir
+ * @param [IN]    mode:		mode of new dir
+ * @return 0 on success, errno value on error.
+ */
 int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
+
+/**
+ * @brief link by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    target:	link target path
+ * @param [IN]    linkname:	link path
+ * @return 0 on success, errno value on error.
+ */
 int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
+
+/**
+ * @brief symlink
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    target:	symlink content
+ * @param [IN]    linkname:	link path
+ * @return 0 on success, errno value on error.
+ */
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
+
+/**
+ * @brief umask
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    mask:		new umask
+ * @return old umask
+ */
 int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
+
+/**
+ * @brief chown by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file to chown
+ * @param [IN]    uid:		uid...
+ * @param [IN]    gid:		gid...
+ * @return 0 on success, errno value on error.
+ */
 int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid);
+
+/**
+ * @brief chmod by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file to chown
+ * @param [IN]    mode:		mode...
+ * @return 0 on success, errno value on error.
+ */
 int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
+
+/**
+ * @brief stat by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file to stat
+ * @param [INOUT] attr:		attr to fill, must NOT be null
+ * @return 0 on success, errno value on error.
+ */
 int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+
+/**
+ * @brief stat by path that doesn't follow symlinks
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file to stat
+ * @param [INOUT] attr:		attr to fill, must NOT be null
+ * @return 0 on success, errno value on error.
+ */
 int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+
+/**
+ * @brief xattrget by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file
+ * @param [IN]    field:	attribute name. if "" or NULL, will return the list separated by \0s
+ * @param [IN]    buf:		buffer where to store attributes
+ * @param [IN]    count:	buffer size
+ * @return size read on success, -errno value on error.
+ */
 ssize_t p9l_xattrget(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count);
-ssize_t p9l_xattrset(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count, int flags);
-ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count);
-ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, int flags);
 
-
+/**
+ * @brief xattrlist - wrapper around xattrget with NULL field
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file
+ * @param [IN]    buf:		buffer where to store attributes
+ * @param [IN]    count:	buffer size
+ * @return size read on success, -errno value on error.
+ */
 static inline ssize_t p9l_xattrlist(struct p9_handle *p9_handle, char *path, char *buf, size_t count) {
 	return p9l_xattrget(p9_handle, path, NULL, buf, count);
 }
+
+
+/**
+ * @brief xattrset by path
+ *
+ * @param [IN]    p9_handle:	connection handle
+ * @param [IN]    path:		path of file
+ * @param [IN]    field:	field to define
+ * @param [IN]    buf:		buffer to copy from. if empty, the attribute is removed
+ * @param [IN]    count:	number of bytes to copy
+ * @param [IN]    flags:	flag can be 0 (do it anyway), XATTR_CREATE (fail if exist)
+ *				or XATTR_REPLACE (fail if doesn't exist)
+ * @return size written on success, -errno value on error.
+ */
+ssize_t p9l_xattrset(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count, int flags);
+
+
+/**
+ * @brief fstatat
+ *
+ * @param [IN]    dfid:		fid of a directory
+ * @param [IN]    path:		path of file in dir
+ * @param [IN]    flags:	0 or AT_SYMLINK_NOFOLLOW
+ * @return 0 on success, errno value on error.
+ */
+int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
+
+/**
+ * @brief xattrget by fid
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    field:        attribute name. if "" or NULL, will return the list separated by \0s
+ * @param [IN]    buf:          buffer where to store attributes
+ * @param [IN]    count:        buffer size
+ * @return size read on success, -errno value on error.
+ */
+ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count);
+
+/**
+ * @brief xattrlist by fid - wrapper around xattrget with NULL field
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    buf:          buffer where to store attributes
+ * @param [IN]    count:        buffer size
+ * @return size read on success, -errno value on error.
+ */
 static inline ssize_t p9l_fxattrlist(struct p9_fid *fid, char *buf, size_t count) {
 	return p9l_fxattrget(fid, NULL, buf, count);
 }
 
+/**
+ * @brief xattrset by fid
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    buf:          buffer to copy from. if empty, the attribute is removed
+ * @param [IN]    count:        number of bytes to copy
+ * @param [IN]    flags:        flag can be 0 (do it anyway), XATTR_CREATE (fail if exist)
+ *                              or XATTR_REPLACE (fail if doesn't exist)
+ * @return size written on success, -errno value on error.
+ */
+ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, int flags);
 
+
+/**
+ * @brief chown by fid
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    uid:		uid...
+ * @param [IN]    gid:		gid...
+ * @return 0 on success, errno value on error.
+ */
 static inline int p9l_fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	struct p9_setattr attr;
 	memset(&attr, 0, sizeof(struct p9_setattr));
@@ -857,6 +1077,13 @@ static inline int p9l_fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 	return p9p_setattr(fid->p9_handle, fid, &attr);
 }
 
+/**
+ * @brief chmod by fid
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    mode:		mode
+ * @return 0 on success, errno value on error.
+ */
 static inline int p9l_fchmod(struct p9_fid *fid, uint32_t mode) {
 	struct p9_setattr attr;
 	memset(&attr, 0, sizeof(struct p9_setattr));
@@ -865,28 +1092,103 @@ static inline int p9l_fchmod(struct p9_fid *fid, uint32_t mode) {
 	return p9p_setattr(fid->p9_handle, fid, &attr);
 }
 
+/**
+ * @brief stat by fid
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [INOUT] attr:		attribute to fill, must NOT be NULL.
+ * @return 0 on success, errno value on error.
+ */
 static inline int p9l_fstat(struct p9_fid *fid, struct p9_getattr *attr) {
 	return p9p_getattr(fid->p9_handle, fid, attr);
 }
 
+/**
+ * @brief fsync
+ *
+ * @param [IN]    fid:		fid to use
+ * @return 0 on success, errno value on error.
+ */
 static inline int p9l_fsync(struct p9_fid *fid) {
 	return p9p_fsync(fid->p9_handle, fid);
 }
 
 
-/* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
-
+/**
+ * @brief fseek into a file
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    offset:	offset...
+ * @param [IN]    whence:	SEEK_SET, SEEK_END or SEEK_CUR, cf. man fseek(3)
+ * @return 0 on success, errno value on error.
+ */
 int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence);
-uint64_t p9l_ftell(struct p9_fid *fid);
 
+/**
+ * @brief get current offset
+ * same as fid->offset
+ *
+ * @param [IN]    fid:		fid to use
+ * @return 0 on success, errno value on error.
+ */
+static inline uint64_t p9l_ftell(struct p9_fid *fid) {
+	return fid->offset;
+}
+
+/**
+ * @brief write stuff!
+ * If buffer is small it copies it, if it's big enough register memories and sends it zerocopy
+ * It does the looping for you, so if return value < count we got a problem.
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    buffer:	buffer to send
+ * @param [IN]    count:	size of buffer
+ * @return size written on success, -errno value on error.
+ */
 ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count);
+
+/**
+ * @brief writev
+ * iterates around write for each iov.
+ * Someday might register small vectors together to have one bigger write,
+ * but mem registration is expensive so might not be worth it.
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    iov:		iov array
+ * @param [IN]    iovcnt:	number of iovs
+ * @return size written on success, -errno value on error.
+ */
 ssize_t p9l_writev(struct p9_fid *fid, struct iovec *iov, int iovcnt);
+
+/**
+ * @brief read stuff!
+ * There is a copy anyway, unfortnately.
+ * It does the looping for you, so if return value < count we got eof.
+ * Might add a flag later to change that as it's not necessarily what we want
+ * (e.g. stop as soon as p9p_read gives us less than the count we asked for)
+ * Shouldn't change much given we only consider real files and not sockets/blocking stuff though.
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    buffer:	buffer to fill
+ * @param [IN]    count:	size of buffer
+ * @return size read on success, -errno value on error.
+ */
 ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count);
+
+/**
+ * @brief readv
+ * just a loop around read really.
+ *
+ * @param [IN]    fid:		fid to use
+ * @param [IN]    iov:		iov array
+ * @param [IN]    iovcnt:	number of iovs
+ * @return size read on success, -errno value on error.
+ */
 ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 
-// 9p_shell_functions.c - used for python bindings
 
+
+// 9p_shell_functions.c - used for python bindings... or not, but can't hurt to keep them here for now
 int p9s_ls(struct p9_handle *p9_handle, char *arg);
 int p9s_cd(struct p9_handle *p9_handle, char *arg);
 int p9s_cat(struct p9_handle *p9_handle, char *arg);
