@@ -68,6 +68,11 @@ size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags);
 	$1->handle_obj = obj1;
 	Py_INCREF(obj1);
 %}
+%typemap(out) struct fid *fid::walk %{
+	$result = SWIG_NewPointerObj(SWIG_as_voidptr($1), SWIGTYPE_p_fid, SWIG_BUILTIN_INIT |  0 );
+	$1->handle_obj = arg1->handle_obj;
+	Py_INCREF(arg1->handle_obj);
+%}
 struct fid {
 	struct p9_fid *ptr;
 	PyObject *handle_obj;
@@ -89,6 +94,7 @@ struct p9_handle {
 
 %newobject p9_handle::open;
 %newobject p9_handle::walk;
+%newobject fid::walk;
 
 %inline %{
 int ls_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
@@ -160,25 +166,33 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	~p9_handle() {
 		p9_destroy(&$self);
 	}
+%feature("docstring", "change debug and print old one") debug;
 	int debug(int dbg) {
 		int t = $self->debug;
 		$self->debug = dbg;
 		return t;
 	}
+%feature("docstring", "change full_debug and print old one") full_debug;
 	int full_debug(int dbg) {
 		int t = $self->full_debug;
 		$self->full_debug = dbg;
 		return t;
 	}
+%feature("docstring", "change umask and print old one") umask;
 	uint32_t umask(uint32_t mask) {
 		return p9l_umask($self, mask);
 	}
+%feature("docstring", "prints working directory") pwd;
 	char *pwd() {
 		return $self->cwd->path;
 	}
+%feature("docstring", "change current directory") cd;
 	void cd(char *path) {
 		errno = p9l_cd($self, path);
 	}
+%feature("docstring", "walk to an absolute path or a path relative to cwd.
+
+new fid can then be opened with fid.open() or it can be used to walk somewhere else") walk;
 	struct fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
 		if ((errno = p9l_walk($self, path[0] == '/' ? $self->root_fid : $self->cwd, path, &fid, flags)))
@@ -188,6 +202,10 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 		wrap->ptr = fid;
 		return wrap;
 	}
+%feature("docstring", "open a file through path (either absolute or relative to cwd)
+
+flags are open flags (both O_RDONLY/O_WRONLY/O_RDWR and O_CREAT, O_APPEND, O_TRUNC)
+mode is file mode if created, umask is applied") open;
 	struct fid *open(char *path, uint32_t flags, uint32_t mode) {
 		struct p9_fid *fid;
 		if ((errno = p9l_open($self, &fid, path, flags, mode, 0)))
@@ -315,7 +333,7 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags = 0) {
 		return fxattrset(fid, field, buf, flags);
 	}
-	PyObject *read(struct p9_fid *fid, size_t count) {
+	PyObject *fread(struct p9_fid *fid, size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
 		char *zbuf;
@@ -332,7 +350,7 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 		}
 		return pystr;
 	}
-	int write(struct p9_fid *fid, char *buf, size_t count) {
+	int fwrite(struct p9_fid *fid, char *buf, size_t count) {
 		int rc;
 		rc = p9l_write(fid, buf, count);
 		if (rc < 0) {
@@ -382,6 +400,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		SWIG_fail;
 	}
 }
+%feature("docstring", "close, flush and destroy fid") clunk;
 	void clunk() {
 		errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
 
@@ -389,9 +408,11 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		if ($self->ptr == NULL)
 			Py_DECREF($self->handle_obj);
 	}
+%feature("docstring", "unlink - does NOT close") unlink;
 	void unlink() {
 		p9l_rm($self->ptr->p9_handle, $self->ptr->path);
 	}
+%feature("docstring", "open if fid was obtained from a walk/had no flag on creation") open;
        void open(uint32_t flags) {
                if ($self->ptr->openflags == 0)
                        errno = p9p_lopen($self->ptr->p9_handle, $self->ptr, flags, NULL);
@@ -419,8 +440,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		}
 		return ret;
 	}
-%feature("autodoc", "seek(p9_fid self, int64_t offset, int whence)
-whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
+%feature("docstring", "whence is one of SEEK_SET, SEEK_CUR, SEEK_END") seek;
 	void seek(int64_t offset, int whence) {
 		errno = p9l_fseek($self->ptr, offset, whence);
 	}
@@ -449,12 +469,17 @@ whence is one of SEEK_SET, SEEK_CUR, SEEK_END") p9_fid::seek;
 		}
 		return rc;
 	}
-	struct p9_fid *walk(char *path, int flags = 0) {
+%feature("docstring", "walk to an absolute path or a path relative to fid (must be a directory for this)
+
+new fid can then be opened with fid.open() or it can be used to walk somewhere else") walk;
+	struct fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
 		if ((errno = p9l_walk($self->ptr->p9_handle, $self->ptr, path, &fid, flags)))
 			return NULL;
 
-		return fid;
+		struct fid *wrap = malloc(sizeof(struct fid));
+		wrap->ptr = fid;
+		return wrap;
 	}
 	PyObject *xattrlist(size_t count) {
 		return fxattrlist($self->ptr, count);
