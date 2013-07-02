@@ -164,7 +164,6 @@ struct p9_handle {
 	uint32_t recv_num;
 	uint32_t msize;
 	uint32_t debug;
-	uint32_t full_debug;
 	uint32_t umask;
 	struct p9_fid *root_fid;
 	struct p9_fid *cwd;

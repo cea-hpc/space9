@@ -255,7 +255,7 @@ int p9p_flush(struct p9_handle *p9_handle, uint16_t oldtag) {
 	p9_setvalue(cursor, oldtag, uint16_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "flush on tag %u", oldtag);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "flush on tag %u", oldtag);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -319,11 +319,11 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 
 	/* clone or lookup ? */
 	if (!path || path[0] == '\0') {
-		INFO_LOG(p9_handle->debug, "walk clone fid %u (%s), newfid %u", fid->fid, fid->path, newfid->fid);
+		INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "walk clone fid %u (%s), newfid %u", fid->fid, fid->path, newfid->fid);
 		p9_setvalue(cursor, 0, uint16_t);
 		nwname = 0;
 	} else {
-		INFO_LOG(p9_handle->debug, "walk from fid %u (%s) to %s, newfid %u", fid->fid, fid->path, path, newfid->fid);
+		INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "walk from fid %u (%s) to %s, newfid %u", fid->fid, fid->path, path, newfid->fid);
 
 		nwname = 0;
 		p9_savepos(cursor, pnwname, uint16_t);
@@ -428,7 +428,7 @@ int p9p_clunk(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	p9_setvalue(cursor, (*pfid)->fid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "clunk on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "clunk on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -484,7 +484,7 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	p9_setvalue(cursor, (*pfid)->fid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "remove on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "remove on fid %u (%s)", (*pfid)->fid, (*pfid)->path);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -540,7 +540,7 @@ int p9p_lopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags, u
 	p9_setvalue(cursor, flags, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "lopen on fid %u (%s), flags 0x%x", fid->fid, fid->path, flags);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "lopen on fid %u (%s), flags 0x%x", fid->fid, fid->path, flags);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -608,7 +608,7 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_setvalue(cursor, gid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "lcreate from fid %u (%s) to name %s, flag 0x%x, mode %u", fid->fid, fid->path, name, flags, mode);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "lcreate from fid %u (%s) to name %s, flag 0x%x, mode %u", fid->fid, fid->path, name, flags, mode);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -917,7 +917,7 @@ int p9p_mkdir(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, uint
 	p9_setvalue(cursor, gid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "mkdir dfid %u (%s), name %s mode %u", dfid->fid, dfid->path, name, mode);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "mkdir dfid %u (%s), name %s mode %u", dfid->fid, dfid->path, name, mode);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -981,7 +981,7 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 	p9_setvalue(cursor, p9_handle->msize - P9_ROOM_RREADDIR - 1, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "readdir fid %u (%s), offset %#"PRIx64, fid->fid, fid->path, *poffset);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "readdir fid %u (%s), offset %#"PRIx64, fid->fid, fid->path, *poffset);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1067,7 +1067,7 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, 
 	p9_setvalue(cursor, count, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "read fid %u (%s), offset %"PRIu64", count %zi", fid->fid, fid->path, offset, count);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "read fid %u (%s), offset %"PRIu64", count %zi", fid->fid, fid->path, offset, count);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1154,7 +1154,7 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *
 
 	header_data->next = data;
 
-	INFO_LOG(p9_handle->debug, "write fid %u (%s), offset %"PRIu64", count %u", fid->fid, fid->path, offset, data->size);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "write fid %u (%s), offset %"PRIu64", count %u", fid->fid, fid->path, offset, data->size);
 
 	rc = p9c_sendrequest(p9_handle, header_data, tag);
 	if (rc != 0)
@@ -1215,7 +1215,7 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, si
 	p9_setmsglen(cursor, data);
 
 
-	INFO_LOG(p9_handle->debug, "write fid %u (%s), offset %"PRIu64", count %zu", fid->fid, fid->path, offset, count);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "write fid %u (%s), offset %"PRIu64", count %zu", fid->fid, fid->path, offset, count);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1394,7 +1394,7 @@ int p9p_renameat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, s
 	p9_setstr(cursor, strlen(newname), newname);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "renameat on dfid %u (%s) name %s to dfid %u (%s) name %s", dfid->fid, dfid->path, name, newdfid->fid, newdfid->path, newname);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "renameat on dfid %u (%s) name %s to dfid %u (%s) name %s", dfid->fid, dfid->path, name, newdfid->fid, newdfid->path, newname);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1449,7 +1449,7 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
 	p9_setvalue(cursor, flags, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "unlinkat on dfid %u (%s) name %s", dfid->fid, dfid->path, name);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "unlinkat on dfid %u (%s) name %s", dfid->fid, dfid->path, name);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1506,7 +1506,7 @@ int p9p_getattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_getat
 	p9_setvalue(cursor, attr->valid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "getattr on fid %u (%s), attr mask 0x%"PRIx64, fid->fid, fid->path, attr->valid);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "getattr on fid %u (%s), attr mask 0x%"PRIx64, fid->fid, fid->path, attr->valid);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1590,7 +1590,7 @@ int p9p_setattr(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_setat
 	p9_setvalue(cursor, 0LL, uint64_t); /* mtime_nsec */
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "setattr on fid %u (%s), attr mask 0x%"PRIx32, fid->fid, fid->path, attr->valid);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "setattr on fid %u (%s), attr mask 0x%"PRIx32, fid->fid, fid->path, attr->valid);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1642,7 +1642,7 @@ int p9p_fsync(struct p9_handle *p9_handle, struct p9_fid *fid) {
 	p9_setvalue(cursor, fid->fid, uint32_t);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "fsync on fid %u (%s)", fid->fid, fid->path);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "fsync on fid %u (%s)", fid->fid, fid->path);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1697,7 +1697,7 @@ int p9p_link(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *dfi
 	p9_setstr(cursor, strlen(name), name);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "link from fid %u (%s) to dfid %u (%s), filename %s", fid->fid, fid->path, dfid->fid, dfid->path, name);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "link from fid %u (%s) to dfid %u (%s), filename %s", fid->fid, fid->path, dfid->fid, dfid->path, name);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1756,7 +1756,7 @@ int p9p_lock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t type, uint
 	p9_setstr(cursor, strlen(p9_handle->hostname), p9_handle->hostname);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "lock on fid %u (%s), type %u, flags 0x%x, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, type, flags, start, length, proc_id);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "lock on fid %u (%s), type %u, flags 0x%x, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, type, flags, start, length, proc_id);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
@@ -1832,7 +1832,7 @@ int p9p_getlock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t *ptype,
 	p9_setstr(cursor, strlen(p9_handle->hostname), p9_handle->hostname);
 	p9_setmsglen(cursor, data);
 
-	INFO_LOG(p9_handle->debug, "getlock on fid %u (%s), type %u, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, *ptype, *pstart, *plength, *pproc_id);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "getlock on fid %u (%s), type %u, start %"PRIu64", length %"PRIu64", proc_id %u", fid->fid, fid->path, *ptype, *pstart, *plength, *pproc_id);
 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)

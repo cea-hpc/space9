@@ -214,6 +214,11 @@ struct p9_setattr {
 typedef int (*p9p_readdir_cb) (void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid,
 		uint8_t type, uint16_t namelen, char *name);
 
+#define P9_DEBUG_EVENT 0x0001
+#define P9_DEBUG_SETUP 0x0002
+#define P9_DEBUG_PROTO 0x0004
+#define P9_DEBUG_SEND  0x0008
+#define P9_DEBUG_RECV  0x0010
 
 /**
  * \defgroup init init functions

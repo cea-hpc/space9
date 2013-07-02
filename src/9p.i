@@ -172,12 +172,6 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 		$self->debug = dbg;
 		return t;
 	}
-%feature("docstring", "change full_debug and print old one") full_debug;
-	int full_debug(int dbg) {
-		int t = $self->full_debug;
-		$self->full_debug = dbg;
-		return t;
-	}
 %feature("docstring", "change umask and print old one") umask;
 	uint32_t umask(uint32_t mask) {
 		return p9l_umask($self, mask);

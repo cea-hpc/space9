@@ -51,7 +51,7 @@ void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 
 	p9_get_tag(&tag, data->data);
 
-	INFO_LOG(p9_handle->full_debug, "got reply for tag %u", tag);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_RECV, "got reply for tag %u", tag);
 
 	/* kludge on P9_NOTAG to have a smaller array */
 	if (tag == P9_NOTAG)

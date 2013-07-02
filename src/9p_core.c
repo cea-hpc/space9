@@ -115,14 +115,14 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 
 	pthread_mutex_lock(&p9_handle->wdata_lock);
 	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num) {
-		INFO_LOG(p9_handle->debug, "waiting for wdata to free up (sendrequest's acknowledge callback)");
+		INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "waiting for wdata to free up (sendrequest's acknowledge callback)");
 		pthread_cond_wait(&p9_handle->wdata_cond, &p9_handle->wdata_lock);
 	}
 	pthread_mutex_unlock(&p9_handle->wdata_lock);
 
 	pthread_mutex_lock(&p9_handle->credit_lock);
 	while (p9_handle->credits == 0) {
-		INFO_LOG(p9_handle->debug, "waiting for credit (putreply)");
+		INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "waiting for credit (putreply)");
 		pthread_cond_wait(&p9_handle->credit_cond, &p9_handle->credit_lock);
 	}
 	p9_handle->credits--;
@@ -157,7 +157,7 @@ int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag)
 	// We need more recv buffers ready than requests pending
 	int rc;
 
-	INFO_LOG(p9_handle->full_debug, "send request for tag %u", tag);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "send request for tag %u", tag);
 
 	rc = p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 

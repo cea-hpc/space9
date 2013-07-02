@@ -43,7 +43,6 @@ struct p9_conf {
 	uint32_t max_tag;
 	uint32_t msize;
 	uint32_t debug;
-	uint32_t full_debug;
 	struct p9_net_ops *net_ops;
 	struct msk_trans_attr trans_attr;
 };
@@ -101,7 +100,6 @@ static struct conf conf_array[] = {
 	{ "port6", PORT6, 0 },
 	{ "rdma_debug", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, debug) },
 	{ "debug", UINT, offsetof(struct p9_conf, debug) },
-	{ "full_debug", UINT, offsetof(struct p9_conf, full_debug) },
 	{ "msize", SIZE, offsetof(struct p9_conf, msize) },
 	{ "recv_num", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, rq_depth)  },
 	{ "rq_depth", UINT, offsetof(struct p9_conf, trans_attr) + offsetof(struct msk_trans_attr, rq_depth) },
@@ -160,12 +158,12 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 			switch(conf_array[i].type) {
 				case UINT:
 					ptr = (char*)p9_conf + conf_array[i].offset;
-					if (sscanf(line, "%*s = %u", (int*)ptr) != 1) {
+					if (sscanf(line, "%*s = %i", (int*)ptr) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
 						rc = EINVAL;
 						goto out;
 					}
-					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, *(int*)ptr);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %i", conf_array[i].token, *(int*)ptr);
 					break;
 				case STRING:
 					ptr = (char*)p9_conf + conf_array[i].offset;
@@ -174,7 +172,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 						rc = EINVAL;
 						goto out;
 					}
-					INFO_LOG(p9_conf->debug, "Read %s: %s", conf_array[i].token, (char*)ptr);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %s", conf_array[i].token, (char*)ptr);
 					break;
 				case SIZE:
 					ptr = (char*)p9_conf + conf_array[i].offset;
@@ -190,7 +188,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 						rc = EINVAL;
 						goto out;
 					}
-					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, *(int*)ptr);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %i", conf_array[i].token, *(int*)ptr);
 					break;
 				case IP:
 					if (sscanf(line, "%*s = %s", buf_s) != 1) {
@@ -209,7 +207,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					// Default port. depends on the sin family
 					((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(DEFAULT_PORT);
 
-					INFO_LOG(p9_conf->debug, "Read %s: %s", conf_array[i].token, buf_s);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %s", conf_array[i].token, buf_s);
 					break;
 				case PORT:
 					if (sscanf(line, "%*s = %i", &buf_i) != 1) {
@@ -218,7 +216,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 						goto out;
 					}
 					((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(buf_i);
-					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, buf_i);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %i", conf_array[i].token, buf_i);
 					break;
 				case NET_TYPE:
 					if (sscanf(line, "%*s = %s", buf_s) != 1) {
@@ -318,7 +316,6 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		strcpy(p9_handle->aname, p9_conf.aname);
 
 		p9_handle->debug = p9_conf.debug;
-		p9_handle->full_debug = p9_conf.full_debug;
 		p9_handle->uid = p9_conf.uid;
 		p9_handle->recv_num = p9_conf.trans_attr.rq_depth;
 		p9_handle->msize = p9_conf.msize;
