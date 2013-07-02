@@ -31,6 +31,10 @@ typedef uint64_t bitmap_t;
 #define BIT_OFFSET(b)  ((b) % BITS_PER_WORD)
 #define BITMAP_SIZE(s)  (
 
+static inline bitmap_t *bitmap_init(int size) {
+	return calloc(size/8/sizeof(bitmap_t) + (size % 8*sizeof(bitmap_t) == 0 ? 0 : 1), sizeof(bitmap_t));
+}
+
 static inline void set_bit(bitmap_t *map, int n) { 
 	map[WORD_OFFSET(n)] |= (1ULL << BIT_OFFSET(n));
 }
@@ -50,7 +54,7 @@ static inline uint32_t get_and_set_first_bit(bitmap_t *map, uint32_t max) {
 	maxw = max / BITS_PER_WORD;
 	i = 0;
 
-	while (map[i] == ~0L && i < maxw)
+	while (i < maxw && map[i] == ~0L)
 		i++;
 
 	if (i == maxw) {

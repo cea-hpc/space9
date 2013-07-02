@@ -36,9 +36,8 @@ typedef struct bucket {
 
 static inline bucket_t *bucket_init(size_t max, size_t alloc_size) {
 	bucket_t *bucket;
-	bucket = malloc(sizeof(bucket_t)+max*sizeof(void*));
+	bucket = calloc(1, sizeof(bucket_t)+max*sizeof(void*));
 	if (bucket) {
-		memset(bucket, 0, sizeof(bucket_t)+max*sizeof(void*));
 		bucket->size = max;
 		bucket->first = 0;
 		bucket->last = 0;

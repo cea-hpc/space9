@@ -392,9 +392,9 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->credits = p9_handle->recv_num;
 
 		 /* bitmaps, divide by /8 (=/64*8)*/
-		p9_handle->wdata_bitmap = malloc(p9_handle->recv_num/8 + (p9_handle->recv_num % 8 == 0 ? 0 : 1));
-		p9_handle->fids_bitmap = malloc(p9_handle->max_fid/8 + (p9_handle->max_fid % 8 == 0 ? 0 : 1));
-		p9_handle->tags_bitmap = malloc(p9_handle->max_tag/8 + (p9_handle->max_tag % 8 == 0 ? 0 : 1));
+		p9_handle->wdata_bitmap = bitmap_init(p9_handle->recv_num);
+		p9_handle->fids_bitmap = bitmap_init(p9_handle->max_fid);
+		p9_handle->tags_bitmap = bitmap_init(p9_handle->max_tag);
 		p9_handle->fids_bucket = bucket_init(p9_handle->max_fid/8, sizeof(struct p9_fid));
 		p9_handle->tags = malloc(p9_handle->max_tag * sizeof(struct p9_tag));
 		if (p9_handle->wdata_bitmap == NULL ||
@@ -403,11 +403,6 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 			rc = ENOMEM;
 			break;
 		}
-
-		memset(p9_handle->wdata_bitmap, 0, p9_handle->recv_num/8 + (p9_handle->recv_num % 8 == 0 ? 0 : 1));
-		memset(p9_handle->fids_bitmap, 0, p9_handle->max_fid/8 + (p9_handle->max_fid % 8 == 0 ? 0 : 1));
-		memset(p9_handle->tags_bitmap, 0, p9_handle->max_tag/8 + (p9_handle->max_tag % 8 == 0 ? 0 : 1));
-		memset(p9_handle->tags, 0, p9_handle->max_tag * sizeof(struct p9_tag));
 
 		pthread_mutex_init(&p9_handle->wdata_lock, NULL);
 		pthread_cond_init(&p9_handle->wdata_cond, NULL);
