@@ -38,8 +38,9 @@
 #include "utils.h"
 
 /**
- * \file	trans_tcp.c
- * \brief	tcp layer for mooshika, to use it anyway
+ * \file	9p_tcp.c
+ * \brief	tcp layer for mooshika - 9P specific
+ * (because it uses the fact that 9p messages start with message size)
  *
  * slack asynchronus TCP
  *

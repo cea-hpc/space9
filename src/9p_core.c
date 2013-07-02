@@ -31,14 +31,6 @@
 #include "settings.h"
 
 
-/**
- * @brief Get a buffer to fill that will be ok to send directly
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [OUT]   pdata:	filled with appropriate buffer
- * @param [OUT]   tag:		available tag to use in the reply. If set to P9_NOTAG, this is taken instead.
- * @return 0 on success, errno value on error
- */
 int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag) {
 	msk_data_t *data;
 	uint32_t wdata_i, tag;
@@ -81,13 +73,7 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	return 0;
 }
 
-/**
- * @brief Send a buffer obtained through getbuffer
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [IN]    data:		buffer to send
- * @return 0 on success, errno value on error
- */
+
 int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
 	// We need more recv buffers ready than requests pending
 	int rc;
@@ -103,14 +89,6 @@ int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag)
 }
 
 
-/**
- * @brief Put the buffer back in the list of available buffers for use
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [IN]    data:		buffer to put back
- * @param [IN]    tag:		tag to put back
- * @return 0 on success, errno value on error
- */
 int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
 	/* release data through sendrequest's callback */
 	p9_send_cb(p9_handle->trans, data, NULL);
@@ -131,14 +109,7 @@ int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag
 	return 0;
 }
 
-/**
- * @brief Waits for a reply with a given tag to arrive
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [OUT]   pdata:	filled with appropriate buffer
- * @param [IN]    tag:		tag to wait for
- * @return 0 on success, errno value on error
- */
+
 int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) {
 
 	pthread_mutex_lock(&p9_handle->recv_lock);
@@ -161,13 +132,7 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
 	return 0;
 }
 
-/**
- * @brief Signal we're done with the buffer and it can be used again
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [IN]    data:		buffer to reuse
- * @return 0 on success, errno value on error
- */
+
 int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data) {
 	int rc;
 
@@ -185,13 +150,7 @@ int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data) {
 	return rc;
 }
 
-/**
- * @brief Get a fid structure ready to be used
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [OUT]   pfid:		fid to be filled
- * @return 0 on success, errno value on error
- */
+
 int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	struct p9_fid *fid;
 	uint32_t fid_i;
@@ -219,13 +178,7 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	return 0;
 }
 
-/**
- * @brief Release a fid after clunk
- *
- * @param [IN]    p9_handle:	connection handle
- * @param [IN]    fid:		fid to release
- * @return 0 on success, errno value on error
- */
+
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	pthread_mutex_lock(&p9_handle->fid_lock);
 	clear_bit(p9_handle->fids_bitmap, (*pfid)->fid);
