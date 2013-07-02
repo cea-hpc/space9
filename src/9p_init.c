@@ -117,18 +117,19 @@ static struct conf conf_array[] = {
 int parser(char *conf_file, struct p9_conf *p9_conf) {
 	FILE *fd;
 	char line[2*MAXPATHLEN];
-	int i, ret;
+	int i, ret, rc;
 	struct hostent *host;
 	char buf_s[MAXNAMLEN];
 	int buf_i;
 	void *ptr;
+	rc = 0;
 
 	fd = fopen(conf_file, "r");
 
 	if (fd == NULL) {
-		i = errno;
-		ERROR_LOG("Could not open %s: %s (%d)", conf_file, strerror(i), i);
-		return i;
+		rc = errno;
+		ERROR_LOG("Could not open %s: %s (%d)", conf_file, strerror(rc), rc);
+		return rc;
 	}
 
 	// fill default values.
@@ -161,7 +162,8 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					ptr = (char*)p9_conf + conf_array[i].offset;
 					if (sscanf(line, "%*s = %u", (int*)ptr) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, *(int*)ptr);
 					break;
@@ -169,7 +171,8 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					ptr = (char*)p9_conf + conf_array[i].offset;
 					if (sscanf(line, "%*s = %s", (char*)ptr) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					INFO_LOG(p9_conf->debug, "Read %s: %s", conf_array[i].token, (char*)ptr);
 					break;
@@ -178,19 +181,22 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					ret = sscanf(line, "%*s = %i %[a-zA-Z] %i", (int*)ptr, buf_s, &buf_i);
 					if (ret >= 2) {
 						if (set_size((int*)ptr, buf_s))
-							return EINVAL;
+							rc = EINVAL;
+						goto out;
 						if (ret == 3)
 							*(int*)ptr += buf_i;
 					} else if (ret != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, *(int*)ptr);
 					break;
 				case IP:
 					if (sscanf(line, "%*s = %s", buf_s) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					host = gethostbyname(buf_s);
 					//FIXME: if (host->h_addrtype == AF_INET6) {
@@ -208,7 +214,8 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 				case PORT:
 					if (sscanf(line, "%*s = %i", &buf_i) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(buf_i);
 					INFO_LOG(p9_conf->debug, "Read %s: %i", conf_array[i].token, buf_i);
@@ -216,7 +223,8 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 				case NET_TYPE:
 					if (sscanf(line, "%*s = %s", buf_s) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
-						return EINVAL;
+						rc = EINVAL;
+						goto out;
 					}
 					if (strncasecmp(buf_s, p9_net_tcp_s, strlen(p9_net_tcp_s)) == 0) {
 						p9_conf->net_ops = &p9_tcp_ops;
@@ -240,7 +248,9 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 		}
 	}
 
-	return 0;	
+out:
+	fclose(fd);
+	return rc;
 }
 
 void p9_destroy(struct p9_handle **pp9_handle) {
@@ -252,18 +262,10 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 		if (p9_handle->root_fid) {
 			p9p_clunk(p9_handle, &p9_handle->root_fid);
 		}
-		if (p9_handle->fids_bitmap) {
-			free(p9_handle->fids_bitmap);
-			p9_handle->fids_bitmap = NULL;
-		}
-		if (p9_handle->tags_bitmap) {
-			free(p9_handle->tags_bitmap);
-			p9_handle->tags_bitmap = NULL;
-		}
-		if (p9_handle->fids_bucket) {
-			bucket_destroy(p9_handle->fids_bucket);
-			p9_handle->fids_bucket = NULL;
-		}
+		bitmap_destroy(&p9_handle->wdata_bitmap);
+		bitmap_destroy(&p9_handle->fids_bitmap);
+		bitmap_destroy(&p9_handle->tags_bitmap);
+		bucket_destroy(&p9_handle->fids_bucket);
 		if (p9_handle->tags) {
 			free(p9_handle->tags);
 			p9_handle->tags = NULL;
@@ -281,6 +283,11 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 			free(p9_handle->rdmabuf);
 			p9_handle->rdmabuf = NULL;
 		}
+		if (p9_handle->trans) {
+			msk_destroy_trans(&p9_handle->trans);
+		}
+		free(p9_handle);
+		*pp9_handle = NULL;
 	}
 }
 

@@ -34,6 +34,10 @@ typedef uint64_t bitmap_t;
 static inline bitmap_t *bitmap_init(int size) {
 	return calloc(size/8/sizeof(bitmap_t) + (size % 8*sizeof(bitmap_t) == 0 ? 0 : 1), sizeof(bitmap_t));
 }
+static inline void bitmap_destroy(bitmap_t **pmap) {
+	free(*pmap);
+	*pmap = NULL;
+}
 
 static inline void set_bit(bitmap_t *map, int n) { 
 	map[WORD_OFFSET(n)] |= (1ULL << BIT_OFFSET(n));

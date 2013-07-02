@@ -2,6 +2,7 @@
 #ifndef P9_INTERNALS
 #define P9_INTERNALS
 
+#include <stdlib.h>
 #include "space9.h"
 #include "bitmap.h"
 #include "bucket.h"

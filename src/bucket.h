@@ -22,8 +22,6 @@
 #ifndef BUCKET_H
 #define BUCKET_H
 
-#include <stdlib.h>
-
 typedef struct bucket {
 	size_t size;
 	size_t first;
@@ -49,9 +47,22 @@ static inline bucket_t *bucket_init(size_t max, size_t alloc_size) {
 	return bucket;
 }
 
-static inline void bucket_destroy(bucket_t *bucket) {
+static inline void bucket_destroy(bucket_t **pbucket) {
+	bucket_t *bucket = *pbucket;
+
+	if (*pbucket == NULL)
+		return;
+
+	while (bucket->count > 0) {
+		free(bucket->array[bucket->first]);
+		bucket->first++;
+		bucket->count--;
+		if (bucket->first == bucket->size)
+			bucket->first = 0;
+	}
 	pthread_mutex_destroy(&bucket->lock);
 	free(bucket);
+	*pbucket = NULL;
 }
 
 static inline void bucket_put(bucket_t *bucket, void **pitem) {
