@@ -30,6 +30,11 @@
 
 
 void p9_disconnect_cb(msk_trans_t *trans) {
+	struct p9_handle *p9_handle = trans->private_data;
+
+        pthread_mutex_lock(&p9_handle->recv_lock);
+	pthread_cond_broadcast(&p9_handle->recv_cond);
+        pthread_mutex_unlock(&p9_handle->recv_lock);
 }
 
 void p9_recv_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
@@ -50,7 +55,7 @@ void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 
 	/* kludge on P9_NOTAG to have a smaller array */
 	if (tag == P9_NOTAG)
-		tag = 0;
+		tag = p9_handle->max_tag-1;
 
 	pthread_mutex_lock(&p9_handle->recv_lock);
 	p9_handle->tags[tag].rdata = data;
@@ -59,15 +64,7 @@ void p9_recv_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
 }
 
 void p9_send_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {
-	struct p9_handle *p9_handle = trans->private_data;
-	uint32_t wdata_i = data - p9_handle->wdata;
-
 	data->next = NULL;
-
-	pthread_mutex_lock(&p9_handle->wdata_lock);
-	clear_bit(p9_handle->wdata_bitmap, wdata_i);
-	pthread_cond_signal(&p9_handle->wdata_cond);
-	pthread_mutex_unlock(&p9_handle->wdata_lock);
 }
 
 void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg) {

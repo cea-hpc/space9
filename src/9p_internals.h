@@ -116,6 +116,7 @@ static inline void p9_get_tag(uint16_t *ptag, uint8_t *data) {
 
 struct p9_tag {
 	msk_data_t *rdata;
+	uint32_t wdata_i;
 };
 
 struct p9_net_ops {
@@ -167,6 +168,7 @@ struct p9_handle {
 	uint32_t umask;
 	struct p9_fid *root_fid;
 	struct p9_fid *cwd;
+	struct msk_trans_attr trans_attr;
 };
 
 

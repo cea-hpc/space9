@@ -24,11 +24,90 @@
 #include <errno.h>
 #include <netdb.h>      // gethostbyname
 #include <sys/socket.h> // gethostbyname
+#include <unistd.h>     // sleep
 #include <assert.h>
 #include "9p_internals.h"
 #include "utils.h"
 #include "settings.h"
 
+
+int p9c_reconnect(struct p9_handle *p9_handle) {
+	int sleeptime = 0;
+	int rc = 0, i;
+	struct ibv_mr *mr;
+
+
+	while (!p9_handle->trans || p9_handle->trans->state != MSK_CONNECTED) {
+		if (p9_handle->trans)
+			p9_handle->net_ops->destroy_trans(&p9_handle->trans);
+
+		if (sleeptime) {
+			sleep(sleeptime);
+			sleeptime *= 2;
+		} else {
+			sleeptime = 2;
+		}
+
+		/* mooshika init */
+		rc = p9_handle->net_ops->init(&p9_handle->trans, &p9_handle->trans_attr);
+		if (rc) {
+			ERROR_LOG("msk_init failed: %s (%d)", strerror(rc), rc);
+			continue;
+		}
+
+		p9_handle->trans->private_data = p9_handle;
+
+		rc = p9_handle->net_ops->connect(p9_handle->trans);
+		if (rc) {
+			ERROR_LOG("msk_connect failed: %s (%d)", strerror(rc), rc);
+			continue;
+		}
+
+
+		mr = p9_handle->net_ops->reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_handle->msize, IBV_ACCESS_LOCAL_WRITE);
+		if (mr == NULL) {
+			ERROR_LOG("Could not register memory buffer");
+			rc = EIO;
+			continue;
+		}
+
+		for (i=0; i < p9_handle->recv_num; i++) {
+			p9_handle->rdata[i].data = p9_handle->rdmabuf + i * p9_handle->msize;
+			p9_handle->wdata[i].data = p9_handle->rdata[i].data + p9_handle->recv_num * p9_handle->msize;
+			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_handle->msize;
+			p9_handle->rdata[i].mr = mr;
+			p9_handle->wdata[i].mr = mr;
+			rc = p9_handle->net_ops->post_n_recv(p9_handle->trans, &p9_handle->rdata[i], 1, p9_recv_cb, p9_recv_err_cb, NULL);
+			if (rc) {
+				ERROR_LOG("Could not post recv buffer %i: %s (%d)", i, strerror(rc), rc);
+				rc = EIO;
+				break;
+			}
+		}
+		if (rc)
+			continue;
+
+		p9_handle->credits = p9_handle->recv_num;
+
+		rc = p9_handle->net_ops->finalize_connect(p9_handle->trans);
+		if (rc)
+			continue;
+
+		rc = p9p_version(p9_handle);
+		if (rc)
+			break;
+
+		rc = p9p_attach(p9_handle, p9_handle->uid, &p9_handle->root_fid);
+		if (rc)
+			break;
+
+		rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &p9_handle->cwd);
+		if (rc)
+			break;
+	}
+
+	return rc;
+}
 
 int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag) {
 	msk_data_t *data;
@@ -55,10 +134,10 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	pthread_mutex_lock(&p9_handle->tag_lock);
 	/* kludge on P9_NOTAG to have a smaller array */
 	if (*ptag == P9_NOTAG) {
-		while(get_bit(p9_handle->tags_bitmap, 0))
+		tag = p9_handle->max_tag-1;
+		while(get_bit(p9_handle->tags_bitmap, tag))
 			pthread_cond_wait(&p9_handle->tag_cond, &p9_handle->tag_lock);
-		set_bit(p9_handle->tags_bitmap, 0);
-		tag = 0;
+		set_bit(p9_handle->tags_bitmap, tag);
 	} else {
 		while ((tag = get_and_set_first_bit(p9_handle->tags_bitmap, p9_handle->max_tag)) == p9_handle->max_tag)
 			pthread_cond_wait(&p9_handle->tag_cond, &p9_handle->tag_lock);
@@ -67,6 +146,7 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 
 
 	p9_handle->tags[tag].rdata = NULL;
+	p9_handle->tags[tag].wdata_i = wdata_i;
 
 	*ptag = (uint16_t)tag;
 	return 0;
@@ -81,21 +161,26 @@ int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag)
 
 	rc = p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
 
-	if (rc)
-		p9c_abortrequest(p9_handle, data, tag);
+	if (rc) {
+		p9c_reconnect(p9_handle);
+		return p9c_sendrequest(p9_handle, data, tag);
+	}
 
 	return rc;
 }
 
 
 int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
-	/* release data through sendrequest's callback */
-	p9_send_cb(p9_handle->trans, data, NULL);
+	/* release data and tag, getreply code */
+	pthread_mutex_lock(&p9_handle->wdata_lock);
+	clear_bit(p9_handle->wdata_bitmap, p9_handle->tags[tag].wdata_i);
+	pthread_cond_signal(&p9_handle->wdata_cond);
+	pthread_mutex_unlock(&p9_handle->wdata_lock);
 
-	/* and tag, getreply code */
 	pthread_mutex_lock(&p9_handle->tag_lock);
-	if (tag != P9_NOTAG)
-		clear_bit(p9_handle->tags_bitmap, tag);
+	if (tag == P9_NOTAG)
+		tag = p9_handle->max_tag -1;
+	clear_bit(p9_handle->tags_bitmap, tag);
 	pthread_cond_broadcast(&p9_handle->tag_cond);
 	pthread_mutex_unlock(&p9_handle->tag_lock);
 
@@ -118,13 +203,21 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
 	pthread_mutex_unlock(&p9_handle->recv_lock);
 
 	if (p9_handle->trans->state != MSK_CONNECTED) {
-		return ECONNRESET;
+		p9c_reconnect(p9_handle);
+		p9c_sendrequest(p9_handle, &p9_handle->wdata[p9_handle->tags[tag].wdata_i], tag);
+		return p9c_getreply(p9_handle, pdata, tag);
 	}
+
+	pthread_mutex_lock(&p9_handle->wdata_lock);
+	clear_bit(p9_handle->wdata_bitmap, p9_handle->tags[tag].wdata_i);
+	pthread_cond_signal(&p9_handle->wdata_cond);
+	pthread_mutex_unlock(&p9_handle->wdata_lock);
 
 	*pdata = p9_handle->tags[tag].rdata;
 	pthread_mutex_lock(&p9_handle->tag_lock);
-	if (tag != P9_NOTAG)
-		clear_bit(p9_handle->tags_bitmap, tag);
+	if (tag == P9_NOTAG)
+		tag = p9_handle->max_tag -1;
+	clear_bit(p9_handle->tags_bitmap, tag);
 	pthread_cond_broadcast(&p9_handle->tag_cond);
 	pthread_mutex_unlock(&p9_handle->tag_lock);
 

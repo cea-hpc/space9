@@ -1151,6 +1151,14 @@ ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 
 
 /**
+ * @brief reconnects to the server. tries at exponential intervals
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @return 0 on success, errno value on error
+ */
+int p9c_reconnect(struct p9_handle *p9_handle);
+
+/**
  * @brief Get a buffer to fill that will be ok to send directly
  *
  * @param[in]     p9_handle:	connection handle

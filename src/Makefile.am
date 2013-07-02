@@ -21,7 +21,7 @@ endif
 pkgconfigdir=$(libdir)/pkgconfig
 pkgconfig_DATA = libspace9.pc
 
-EXTRA_DIST = 9p.i bitmap.h bucket.h utils.h settings.h 9p_proto_internals.h 9p_tcp.h
+EXTRA_DIST = 9p.i bitmap.h bucket.h utils.h settings.h 9p_proto_internals.h 9p_tcp.h 9p_internals.h
 
 sh: 9p_shell
 	rlwrap ./9p_shell

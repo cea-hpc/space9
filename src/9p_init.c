@@ -294,9 +294,8 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 	struct addrinfo hints, *info;
 	struct p9_conf p9_conf;
-	struct ibv_mr *mr;
 	struct p9_handle *p9_handle;
-	int i, rc;
+	int rc;
 
 	rc = parser(conf_file, &p9_conf);
 	if (rc) {
@@ -328,6 +327,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->net_ops = p9_conf.net_ops;
 		p9_handle->umask = umask(0);
 		umask(p9_handle->umask);
+		memcpy(&p9_handle->trans_attr, &p9_conf.trans_attr, sizeof(struct msk_trans_attr));
 
 		/* cache our own hostname - p9_ahndle->hostname is MAX_CANON+1 long*/
 		p9_handle->hostname[MAX_CANON] = '\0';
@@ -345,22 +345,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		strncpy(p9_handle->hostname, info->ai_canonname, MAX_CANON);
 		freeaddrinfo(info);
 
-		/* mooshika init */
-		rc = p9_handle->net_ops->init(&p9_handle->trans, &p9_conf.trans_attr);
-		if (rc) {
-			ERROR_LOG("msk_init failed: %s (%d)", strerror(rc), rc);
-			break;
-		}
-
-		p9_handle->trans->private_data = p9_handle;
-
-		rc = p9_handle->net_ops->connect(p9_handle->trans);
-		if (rc) {
-			ERROR_LOG("msk_connect failed: %s (%d)", strerror(rc), rc);
-			break;
-		}
-
-		// alloc buffers, post receive buffers
+		/* alloc buffers */
 		p9_handle->rdmabuf = malloc(2 * p9_handle->recv_num * p9_conf.msize);
 		p9_handle->rdata = malloc(p9_handle->recv_num * sizeof(msk_data_t));
 		p9_handle->wdata = malloc(p9_handle->recv_num * sizeof(msk_data_t));
@@ -372,31 +357,6 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		}
 		memset(p9_handle->rdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
 		memset(p9_handle->wdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
-
-		mr = p9_handle->net_ops->reg_mr(p9_handle->trans, p9_handle->rdmabuf, 2 * p9_handle->recv_num * p9_conf.msize, IBV_ACCESS_LOCAL_WRITE);
-		if (mr == NULL) {
-			ERROR_LOG("Could not register memory buffer");
-			rc = EIO;
-			break;
-		}
-
-		for (i=0; i < p9_handle->recv_num; i++) {
-			p9_handle->rdata[i].data = p9_handle->rdmabuf + i * p9_conf.msize;
-			p9_handle->wdata[i].data = p9_handle->rdata[i].data + p9_handle->recv_num * p9_conf.msize;
-			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_conf.msize;
-			p9_handle->rdata[i].mr = mr;
-			p9_handle->wdata[i].mr = mr;
-			rc = p9_handle->net_ops->post_n_recv(p9_handle->trans, &p9_handle->rdata[i], 1, p9_recv_cb, p9_recv_err_cb, NULL);
-			if (rc) {
-				ERROR_LOG("Could not post recv buffer %i: %s (%d)", i, strerror(rc), rc);
-				rc = EIO;
-				break;
-			}
-		}
-		if (rc)
-			break;
-
-		p9_handle->credits = p9_handle->recv_num;
 
 		 /* bitmaps, divide by /8 (=/64*8)*/
 		p9_handle->wdata_bitmap = bitmap_init(p9_handle->recv_num);
@@ -421,19 +381,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		pthread_mutex_init(&p9_handle->credit_lock, NULL);
 		pthread_cond_init(&p9_handle->credit_cond, NULL);
 
-		rc = p9_handle->net_ops->finalize_connect(p9_handle->trans);
-		if (rc)
-			break;
-
-		rc = p9p_version(p9_handle);
-		if (rc)
-			break;
-
-		rc = p9p_attach(p9_handle, p9_conf.uid, &p9_handle->root_fid);
-		if (rc)
-			break;
-
-		rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &p9_handle->cwd);
+		rc = p9c_reconnect(p9_handle);
 		if (rc)
 			break;
 	} while (0);
