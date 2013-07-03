@@ -97,7 +97,7 @@ static void *walkthr(void* arg) {
 
 	buck = bucket_init(100, sizeof(struct nlist));
 	cb_arg.buck = buck;
-	cb_arg.debug = p9_handle->debug;
+	cb_arg.debug = p9_handle->debug & 0x100;
 	cb_arg.tail = bucket_get(buck);
 	strncpy(cb_arg.tail->name, startpoint, MAXNAMLEN);
 	cb_arg.tail->next = NULL;

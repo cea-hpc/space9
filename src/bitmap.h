@@ -32,7 +32,7 @@ typedef uint64_t bitmap_t;
 #define BITMAP_SIZE(s)  (
 
 static inline bitmap_t *bitmap_init(int size) {
-	return calloc(size/8/sizeof(bitmap_t) + (size % 8*sizeof(bitmap_t) == 0 ? 0 : 1), sizeof(bitmap_t));
+	return calloc(size/BITS_PER_WORD + ((size % BITS_PER_WORD) == 0 ? 0 : 1), sizeof(bitmap_t));
 }
 
 static inline void bitmap_destroy(bitmap_t **pmap) {
@@ -41,13 +41,7 @@ static inline void bitmap_destroy(bitmap_t **pmap) {
 }
 
 static inline void bitmap_clear(bitmap_t *map, uint32_t max) {
-	uint32_t maxw, i;
-
-	maxw = max / BITS_PER_WORD + 1;
-
-	for (i = 0; i < maxw; i++) {
-		map[i] = 0L;
-	}
+	memset(map, 0, (max/BITS_PER_WORD + ((max % BITS_PER_WORD) == 0 ? 0 : 1)) * sizeof(bitmap_t));
 }
 
 static inline void bitmap_foreach(bitmap_t *map, uint32_t max, int (*callback)(void *, uint32_t), void *cb_arg) {

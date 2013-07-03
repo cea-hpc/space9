@@ -178,9 +178,11 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					ptr = (char*)p9_conf + conf_array[i].offset;
 					ret = sscanf(line, "%*s = %i %[a-zA-Z] %i", (int*)ptr, buf_s, &buf_i);
 					if (ret >= 2) {
-						if (set_size((int*)ptr, buf_s))
+						if (set_size((int*)ptr, buf_s)) {
+							ERROR_LOG("set_size error on line: %s", line);
 							rc = EINVAL;
-						goto out;
+							goto out;
+						}
 						if (ret == 3)
 							*(int*)ptr += buf_i;
 					} else if (ret != 1) {
@@ -293,7 +295,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 	struct addrinfo hints, *info;
 	struct p9_conf p9_conf;
 	struct p9_handle *p9_handle;
-	int rc;
+	int rc, i;
 
 	rc = parser(conf_file, &p9_conf);
 	if (rc) {
@@ -354,6 +356,13 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		}
 		memset(p9_handle->rdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
 		memset(p9_handle->wdata, 0, p9_handle->recv_num * sizeof(msk_data_t));
+
+		for (i=0; i < p9_handle->recv_num; i++) {
+			p9_handle->rdata[i].data = p9_handle->rdmabuf + i * p9_handle->msize;
+			p9_handle->wdata[i].data = p9_handle->rdata[i].data + p9_handle->recv_num * p9_handle->msize;
+			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_handle->msize;
+		}
+		p9_handle->credits = p9_handle->recv_num;
 
 		 /* bitmaps, divide by /8 (=/64*8)*/
 		p9_handle->wdata_bitmap = bitmap_init(p9_handle->recv_num);

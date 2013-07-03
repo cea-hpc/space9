@@ -32,6 +32,8 @@
 void p9_disconnect_cb(msk_trans_t *trans) {
 	struct p9_handle *p9_handle = trans->private_data;
 
+	INFO_LOG(p9_handle->debug & P9_DEBUG_EVENT, "");
+
         pthread_mutex_lock(&p9_handle->recv_lock);
 	pthread_cond_broadcast(&p9_handle->recv_cond);
         pthread_mutex_unlock(&p9_handle->recv_lock);

@@ -41,8 +41,10 @@ static int p9ci_rebuild_fids(void *arg, uint32_t i) {
 		return EINVAL;
 
 	rc = p9p_rewalk(p9_handle, p9_handle->root_fid, fid->path, fid->fid);
-	if (rc)
+	if (rc) {
+		printf("rewalk failed on fid %u\n", i);
 		return rc;
+	}
 
 	switch (fid->openflags) {
 	case RDFLAG:
@@ -58,8 +60,11 @@ static int p9ci_rebuild_fids(void *arg, uint32_t i) {
 		break;
 	}
 
-	if (flag)
+	if (fid->openflags) {
 		rc = p9p_lopen(p9_handle, fid, flag, NULL);
+		if (rc)
+			printf("re-lopen failed on fid %u\n", i);
+	}
 
 	return rc;
 }
@@ -107,9 +112,6 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 		}
 
 		for (i=0; i < p9_handle->recv_num; i++) {
-			p9_handle->rdata[i].data = p9_handle->rdmabuf + i * p9_handle->msize;
-			p9_handle->wdata[i].data = p9_handle->rdata[i].data + p9_handle->recv_num * p9_handle->msize;
-			p9_handle->rdata[i].size = p9_handle->rdata[i].max_size = p9_handle->wdata[i].max_size = p9_handle->msize;
 			p9_handle->rdata[i].mr = mr;
 			p9_handle->wdata[i].mr = mr;
 			rc = p9_handle->net_ops->post_n_recv(p9_handle->trans, &p9_handle->rdata[i], 1, p9_recv_cb, p9_recv_err_cb, NULL);
@@ -121,8 +123,6 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 		}
 		if (rc)
 			continue;
-
-		p9_handle->credits = p9_handle->recv_num;
 
 		rc = p9_handle->net_ops->finalize_connect(p9_handle->trans);
 		if (rc)
@@ -136,8 +136,10 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 		if (rc)
 			break;
 
-		bitmap_foreach(p9_handle->fids_bitmap, p9_handle->max_fid, p9ci_rebuild_fids, p9_handle);
-
+		for (i=1; i < p9_handle->max_fid; i++) {
+			if (p9_handle->fids[i] != NULL)
+				p9ci_rebuild_fids(p9_handle, i);
+		}
 	}
 
 	pthread_mutex_unlock(&p9_handle->connection_lock);
@@ -149,13 +151,6 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	msk_data_t *data;
 	uint32_t wdata_i, tag;
 
-	pthread_mutex_lock(&p9_handle->wdata_lock);
-	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num) {
-		INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "waiting for wdata to free up (sendrequest's acknowledge callback)");
-		pthread_cond_wait(&p9_handle->wdata_cond, &p9_handle->wdata_lock);
-	}
-	pthread_mutex_unlock(&p9_handle->wdata_lock);
-
 	pthread_mutex_lock(&p9_handle->credit_lock);
 	while (p9_handle->credits == 0) {
 		INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "waiting for credit (putreply)");
@@ -163,6 +158,13 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	}
 	p9_handle->credits--;
 	pthread_mutex_unlock(&p9_handle->credit_lock);
+
+	pthread_mutex_lock(&p9_handle->wdata_lock);
+	while ((wdata_i = get_and_set_first_bit(p9_handle->wdata_bitmap, p9_handle->recv_num)) == p9_handle->recv_num) {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "waiting for wdata to free up (sendrequest's acknowledge callback)");
+		pthread_cond_wait(&p9_handle->wdata_cond, &p9_handle->wdata_lock);
+	}
+	pthread_mutex_unlock(&p9_handle->wdata_lock);
 
 	data = &p9_handle->wdata[wdata_i];
 	data->size = 0;
@@ -191,12 +193,10 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 
 
 int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag) {
-	// We need more recv buffers ready than requests pending
 	int rc;
 
-	INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "send request for tag %u", tag);
-
 	rc = p9_handle->net_ops->post_n_send(p9_handle->trans, data, (data->next != NULL) ? 2 : 1, p9_send_cb, p9_send_err_cb, (void*)(uint64_t)tag);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_SEND, "sent request for tag %u", tag);
 
 	if (rc) {
 		p9c_reconnect(p9_handle);

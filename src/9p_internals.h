@@ -199,5 +199,6 @@ void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
  */
 int p9p_rewalk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, uint32_t newfid_i);
 
+int p9p_relopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags);
 
 #endif
