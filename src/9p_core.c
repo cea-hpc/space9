@@ -25,11 +25,44 @@
 #include <netdb.h>      // gethostbyname
 #include <sys/socket.h> // gethostbyname
 #include <unistd.h>     // sleep
+#include <fcntl.h>
 #include <assert.h>
 #include "9p_internals.h"
 #include "utils.h"
 #include "settings.h"
 
+
+static int p9ci_rebuild_fids(void *arg, uint32_t i) {
+	struct p9_handle *p9_handle = arg;
+	int rc, flag = 0;
+	struct p9_fid *fid = p9_handle->fids[i];
+
+	if (i == 0 || fid == NULL)
+		return EINVAL;
+
+	rc = p9p_rewalk(p9_handle, p9_handle->root_fid, fid->path, fid->fid);
+	if (rc)
+		return rc;
+
+	switch (fid->openflags) {
+	case RDFLAG:
+		flag = O_RDONLY;
+		break;
+	case WRFLAG:
+		flag = O_WRONLY;
+		break;
+	case RDFLAG|WRFLAG:
+		flag = O_RDWR;
+		break;
+	default:
+		break;
+	}
+
+	if (flag)
+		rc = p9p_lopen(p9_handle, fid, flag, NULL);
+
+	return rc;
+}
 
 int p9c_reconnect(struct p9_handle *p9_handle) {
 	int sleeptime = 0;
@@ -37,13 +70,15 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 	struct ibv_mr *mr;
 
 
+	pthread_mutex_lock(&p9_handle->connection_lock);
+
 	while (!p9_handle->trans || p9_handle->trans->state != MSK_CONNECTED) {
 		if (p9_handle->trans)
 			p9_handle->net_ops->destroy_trans(&p9_handle->trans);
 
 		if (sleeptime) {
 			sleep(sleeptime);
-			sleeptime *= 2;
+			sleeptime = MIN(300,sleeptime*2);
 		} else {
 			sleeptime = 2;
 		}
@@ -101,10 +136,11 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 		if (rc)
 			break;
 
-		rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &p9_handle->cwd);
-		if (rc)
-			break;
+		bitmap_foreach(p9_handle->fids_bitmap, p9_handle->max_fid, p9ci_rebuild_fids, p9_handle);
+
 	}
+
+	pthread_mutex_unlock(&p9_handle->connection_lock);
 
 	return rc;
 }
@@ -129,6 +165,7 @@ int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *pta
 	pthread_mutex_unlock(&p9_handle->credit_lock);
 
 	data = &p9_handle->wdata[wdata_i];
+	data->size = 0;
 	*pdata = data;
 
 	pthread_mutex_lock(&p9_handle->tag_lock);
@@ -267,12 +304,16 @@ int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	fid->openflags = 0;
 	fid->offset = 0L;
 	*pfid = fid;
+	pthread_mutex_lock(&p9_handle->fid_lock);
+	p9_handle->fids[fid_i] = fid;
+	pthread_mutex_unlock(&p9_handle->fid_lock);
 	return 0;
 }
 
 
 int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid **pfid) {
 	pthread_mutex_lock(&p9_handle->fid_lock);
+	p9_handle->fids[(*pfid)->fid] = NULL;
 	clear_bit(p9_handle->fids_bitmap, (*pfid)->fid);
 	pthread_mutex_unlock(&p9_handle->fid_lock);
 

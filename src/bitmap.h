@@ -34,9 +34,41 @@ typedef uint64_t bitmap_t;
 static inline bitmap_t *bitmap_init(int size) {
 	return calloc(size/8/sizeof(bitmap_t) + (size % 8*sizeof(bitmap_t) == 0 ? 0 : 1), sizeof(bitmap_t));
 }
+
 static inline void bitmap_destroy(bitmap_t **pmap) {
 	free(*pmap);
 	*pmap = NULL;
+}
+
+static inline void bitmap_clear(bitmap_t *map, uint32_t max) {
+	uint32_t maxw, i;
+
+	maxw = max / BITS_PER_WORD + 1;
+
+	for (i = 0; i < maxw; i++) {
+		map[i] = 0L;
+	}
+}
+
+static inline void bitmap_foreach(bitmap_t *map, uint32_t max, int (*callback)(void *, uint32_t), void *cb_arg) {
+	uint32_t maxw, i, j;
+
+	maxw = max / BITS_PER_WORD + 1;
+
+	for (i=0; i < maxw; i++) {
+		if (map[i] == 0LL)
+			continue;
+
+		for (j=0; j < BITS_PER_WORD; j++) {
+			if (map[i] & (1 << j))
+				callback(cb_arg, i*BITS_PER_WORD+j);
+		}
+	}
+
+	for (j=0; j < BIT_OFFSET(max); j++) {
+		if (map[i] & (1 << j))
+			callback(cb_arg, i*BITS_PER_WORD+j);
+	}
 }
 
 static inline void set_bit(bitmap_t *map, int n) { 
@@ -58,11 +90,11 @@ static inline uint32_t get_and_set_first_bit(bitmap_t *map, uint32_t max) {
 	maxw = max / BITS_PER_WORD;
 	i = 0;
 
-	while (i < maxw && map[i] == ~0L)
+	while (i < maxw && map[i] == ~0LL)
 		i++;
 
 	if (i == maxw) {
-		if (BIT_OFFSET(max) != 0) {
+		if (BIT_OFFSET(max) != 0 && map[i] != ~0LL) {
 			i = maxw*BITS_PER_WORD + ffsll(~map[maxw]) - 1;
 			if (i < max)
 				set_bit(map, i);
@@ -71,12 +103,38 @@ static inline uint32_t get_and_set_first_bit(bitmap_t *map, uint32_t max) {
 		} else {
 			i = max;
 		}
-
-		return i;
+	} else {
+		i = i*BITS_PER_WORD + ffsll(~map[i]) - 1;
+		set_bit(map, i);
 	}
 
-	i = i*BITS_PER_WORD + ffsll(~map[i]) - 1;
-	set_bit(map, i);
+	return i;
+}
+
+static inline uint32_t get_and_clear_first_bit(bitmap_t *map, uint32_t max) {
+	uint32_t maxw, i;
+
+	maxw = max / BITS_PER_WORD;
+	i = 0;
+
+	while (i < maxw && map[i] == 0LL)
+		i++;
+
+	if (i == maxw) {
+		if (BIT_OFFSET(max) != 0 && map[i] != 0LL) {
+			i = maxw*BITS_PER_WORD + ffsll(map[maxw]) - 1;
+			if (i < max)
+				clear_bit(map, i);
+			else
+				i = max;
+		} else {
+			i = max;
+		}
+	} else {
+		i = i*BITS_PER_WORD + ffsll(map[i]) - 1;
+		clear_bit(map, i);
+	}
+
 	return i;
 }
 

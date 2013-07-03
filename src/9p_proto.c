@@ -180,7 +180,12 @@ int p9p_attach(struct p9_handle *p9_handle, uint32_t uid, struct p9_fid **pfid) 
 	if (rc != 0 || data == NULL)
 		return rc;
 
-	rc = p9c_getfid(p9_handle, &fid);
+	/* handle reconnection: if fid already exists, take the same fid */
+	if (*pfid)
+		fid = *pfid;
+	else
+		rc = p9c_getfid(p9_handle, &fid);
+
 	if (rc) {
 		p9c_abortrequest(p9_handle, data, tag);
 		ERROR_LOG("not enough fids - failing attach");
@@ -286,6 +291,85 @@ int p9p_flush(struct p9_handle *p9_handle, uint16_t oldtag) {
 	return rc;
 }
 
+int p9p_rewalk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, uint32_t newfid_i) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint16_t nwname;
+	uint8_t msgtype;
+	uint8_t *cursor, *pnwname;
+	char *subpath, *curpath;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || path == NULL)
+		return EINVAL;
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TWALK, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setvalue(cursor, newfid_i, uint32_t);
+
+	/* clone or lookup ? */
+	if (!path || path[0] == '\0') {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "walk clone fid %u (%s), newfid %u", fid->fid, fid->path, newfid_i);
+		p9_setvalue(cursor, 0, uint16_t);
+		nwname = 0;
+	} else {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "walk from fid %u (%s) to %s, newfid %u", fid->fid, fid->path, path, newfid_i);
+
+		nwname = 0;
+		p9_savepos(cursor, pnwname, uint16_t);
+		curpath = path;
+		while ((subpath = strchr(curpath, '/')) != NULL) {
+			subpath[0] = '\0';
+			if (curpath != subpath) {
+				p9_setstr(cursor, subpath-curpath, curpath);
+				nwname += 1;
+			}
+			subpath[0] = '/';
+			curpath = subpath+1;
+		}
+
+		if (strnlen(curpath,MAXNAMLEN) > 0) {
+			p9_setstr(cursor, strnlen(curpath, MAXNAMLEN), curpath);
+			nwname += 1;
+		}
+		p9_setvalue(pnwname, nwname, uint16_t);
+	}
+
+	p9_setmsglen(cursor, data);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RWALK:
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TWALK, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}
 
 int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct p9_fid **pnewfid) {
 	int rc;

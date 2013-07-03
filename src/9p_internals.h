@@ -131,7 +131,6 @@ struct p9_net_ops {
 
 	int (*post_n_recv)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
 	int (*post_n_send)(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_callback_t callback, ctx_callback_t err_callback, void *callback_arg);
-
 };
 
 struct p9_handle {
@@ -150,6 +149,7 @@ struct p9_handle {
 	pthread_mutex_t tag_lock;
 	pthread_cond_t tag_cond;
 	pthread_mutex_t fid_lock;
+	pthread_mutex_t connection_lock;
 	pthread_mutex_t credit_lock;
 	pthread_cond_t credit_cond;
 	uint32_t credits;
@@ -159,7 +159,7 @@ struct p9_handle {
 	uint32_t max_fid;
 	bitmap_t *fids_bitmap;
 	bucket_t *fids_bucket;
-	uint32_t nfids;
+	struct p9_fid **fids;
 	uint32_t uid;
 	uint32_t recv_num;
 	uint32_t msize;
@@ -184,6 +184,20 @@ void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
 /* utility flags - kernel O_RDONLY sucks for being 0 */
 #define RDFLAG 1
 #define WRFLAG 2
+
+
+
+// 9p_proto.c
+/**
+ * @brief walk without allocating a new fid
+ *
+ * @param[in]    p9_handle:	connection handle
+ * @param[in]    fid:		directory fid
+ * @param[in]    path:		path to walk
+ * @param[in]    newfid_i:	new fid number
+ * @return 0 on success, errno value on error
+ */
+int p9p_rewalk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, uint32_t newfid_i);
 
 
 #endif

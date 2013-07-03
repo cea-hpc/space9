@@ -360,10 +360,11 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		p9_handle->fids_bitmap = bitmap_init(p9_handle->max_fid);
 		p9_handle->tags_bitmap = bitmap_init(p9_handle->max_tag);
 		p9_handle->fids_bucket = bucket_init(p9_handle->max_fid/8, sizeof(struct p9_fid));
-		p9_handle->tags = malloc(p9_handle->max_tag * sizeof(struct p9_tag));
-		if (p9_handle->wdata_bitmap == NULL ||
-		    p9_handle->fids_bitmap == NULL || p9_handle->tags_bitmap == NULL ||
-		    p9_handle->fids_bucket == NULL || p9_handle->tags == NULL) {
+		p9_handle->tags = calloc(1, p9_handle->max_tag * sizeof(struct p9_tag));
+		p9_handle->fids = calloc(1, p9_handle->max_fid * sizeof(void*));
+		if (p9_handle->wdata_bitmap == NULL || p9_handle->fids_bitmap == NULL ||
+		    p9_handle->tags_bitmap == NULL || p9_handle->fids_bucket == NULL ||
+		    p9_handle->tags == NULL || p9_handle->fids == NULL) {
 			rc = ENOMEM;
 			break;
 		}
@@ -375,12 +376,18 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		pthread_mutex_init(&p9_handle->tag_lock, NULL);
 		pthread_cond_init(&p9_handle->tag_cond, NULL);
 		pthread_mutex_init(&p9_handle->fid_lock, NULL);
+		pthread_mutex_init(&p9_handle->connection_lock, NULL);
 		pthread_mutex_init(&p9_handle->credit_lock, NULL);
 		pthread_cond_init(&p9_handle->credit_cond, NULL);
 
 		rc = p9c_reconnect(p9_handle);
 		if (rc)
 			break;
+
+		rc = p9p_walk(p9_handle, p9_handle->root_fid, NULL, &p9_handle->cwd);
+		if (rc)
+			break;
+
 	} while (0);
 
 	if (rc) {
