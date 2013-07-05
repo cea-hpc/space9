@@ -43,6 +43,7 @@
 #define DEFAULT_TOTALSIZE 2*1024*1024*1024L
 #define DEFAULT_FILENAME "readwrite"
 #define DEFAULT_CONFFILE "../sample.conf"
+#define DEFAULT_PIPELINE 2
 
 struct thrarg {
 	struct p9_handle *p9_handle;
@@ -50,6 +51,7 @@ struct thrarg {
 	pthread_barrier_t barrier;
 	struct timeval write;
 	struct timeval read;
+	uint32_t pipeline;
 	uint32_t chunksize;
 	uint64_t totalsize;
 	char *basename;
@@ -61,13 +63,17 @@ static void *readwritethr(void* arg) {
 	struct p9_fid *fid;
 	struct timeval start, write, read;
 	int rc, tmprc;
+	uint16_t *tag;
+	int pipefill, pipeget;
 	uint64_t offset;
 	msk_data_t *data;
 	char *zbuf;
 	char *buffer;
-	buffer = malloc(thrarg->chunksize);
 
-	if (!buffer) {
+	buffer = malloc(thrarg->chunksize);
+	tag = malloc(thrarg->pipeline * sizeof(uint16_t));
+
+	if (!buffer || !tag) {
 		printf("could not allocate buffer\n");
 		exit(1);
 	}
@@ -95,15 +101,36 @@ static void *readwritethr(void* arg) {
 		data->size = thrarg->chunksize;
 		data->max_size = thrarg->chunksize;
 		p9c_reg_mr(p9_handle, data);
+		pipeget = -thrarg->pipeline+1;
+		pipefill = 0;
 		do {
-			/* rc = p9p_write(p9_handle, fid, buffer, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), offset); */
 			if (thrarg->totalsize-offset < thrarg->chunksize)
 				data->size = thrarg->totalsize-offset;
-			rc = p9pz_write(p9_handle, fid, data, offset);
+			rc = p9pz_write_send(p9_handle, fid, data, offset, &tag[pipefill%thrarg->pipeline]);
 			if (rc < 0)
 				break;
-			offset += rc;
-		} while (rc > 0 && thrarg->totalsize > offset);
+			offset += data->size;
+			if (offset >= thrarg->totalsize)
+				break;
+			if (pipeget >= 0) {
+				rc = p9pz_write_wait(p9_handle, tag[pipeget%thrarg->pipeline]);
+				if (rc < 0) {
+					printf("write failed: %s (%d)\n", strerror(-rc), -rc);
+					break;
+				}
+				if (rc != thrarg->chunksize) {
+					printf("not a full write!!! wrote %u, expected %u\n", rc, thrarg->chunksize);
+				}
+			}
+			pipeget++;
+			pipefill++;
+		} while (thrarg->totalsize > offset);
+		while (pipeget < pipefill) {
+			rc = p9pz_write_wait(p9_handle, tag[pipeget%thrarg->pipeline]);
+			if (rc < 0)
+				printf("write failed: %s (%d)\n", strerror(-rc), -rc);
+			pipeget++;
+		}
 		p9c_dereg_mr(p9_handle, data);
 		free(data);
 		if (rc < 0) {
@@ -125,16 +152,39 @@ static void *readwritethr(void* arg) {
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
 		offset = 0LL;
+		pipeget = -thrarg->pipeline+1;
+		pipefill = 0;
 		do {
-			/* rc = p9p_read(p9_handle, fid, buffer, MIN(thrarg->chunksize, (uint32_t)(thrarg->totalsize-offset)), offset); */
-
-			rc = p9pz_read(p9_handle, fid, &zbuf, ((thrarg->totalsize-offset < thrarg->chunksize) ? thrarg->totalsize-offset : thrarg->chunksize), offset, &data);
+			if (thrarg->totalsize-offset < thrarg->chunksize)
+				data->size = thrarg->totalsize-offset;
+			rc = p9pz_read_send(p9_handle, fid, ((thrarg->totalsize-offset < thrarg->chunksize) ? thrarg->totalsize-offset : thrarg->chunksize), offset, &tag[pipefill%thrarg->pipeline]);
 			if (rc < 0)
 				break;
+			offset += data->size;
+			if (offset >= thrarg->totalsize)
+				break;
 
+			if (pipeget >= 0) {
+				rc = p9pz_read_wait(p9_handle, &zbuf, &data, tag[pipeget%thrarg->pipeline]);
+				if (rc < 0) {
+					printf("read failed: %s (%d)\n", strerror(-rc), -rc);
+					break;
+				}
+				if (rc != thrarg->chunksize) {
+					printf("not a full read!!! read %u, expected %u\n", rc, thrarg->chunksize);
+				}
+				p9c_putreply(p9_handle, data);
+			}
+			pipeget++;
+			pipefill++;
+		} while (thrarg->totalsize > offset);
+		while (pipeget < pipefill) {
+			rc = p9pz_read_wait(p9_handle, &zbuf, &data, tag[pipeget%thrarg->pipeline]);
+			if (rc < 0)
+				printf("write failed: %s (%d)\n", strerror(-rc), -rc);
 			p9c_putreply(p9_handle, data);
-			offset += rc;
-		} while (rc > 0 && thrarg->totalsize > offset);
+			pipeget++;
+		}
 		if (rc < 0) {
 			rc = -rc;
 			printf("read failed at offset %"PRIu64", error: %s (%d)\n", offset, strerror(rc), rc);
@@ -180,6 +230,7 @@ static void print_help(char **argv) {
 	printf("Usage: %s [-c conf] [-s chunk-size] [-S file-size] [-f filename] [-t thread-num]\n", argv[0]);
 	printf(	"Optional arguments:\n"
 		"	-t, --threads num: number of operating threads\n"
+		"	-p, --pipeline num: number of simultaneous requests on a single file\n"
 		"	-c, --conf file: conf file to use\n"
 		"	-s, --chunk[-size] size: chunk size to use, default is optimal based on msize\n"
 		"	-S, --filesize size: size of the created files\n"
@@ -198,6 +249,7 @@ int main(int argc, char **argv) {
 	thrarg.chunksize = DEFAULT_CHUNKSIZE;
 	thrarg.totalsize = DEFAULT_TOTALSIZE;
 	thrarg.basename = DEFAULT_FILENAME;
+	thrarg.pipeline = DEFAULT_PIPELINE;
 	conffile = DEFAULT_CONFFILE;
 	pthread_mutex_init(&thrarg.lock, NULL);
 	pthread_barrier_init(&thrarg.barrier, NULL, thrnum);
@@ -210,13 +262,14 @@ int main(int argc, char **argv) {
 		{ "filename",	required_argument,	0,		'f' },
 		{ "help",	no_argument,		0,		'h' },
 		{ "threads",	required_argument,	0,		't' },
+		{ "pipeline",	required_argument,	0,		'p' },
 		{ 0,		0,			0,		 0  }
 	};
 
 	int option_index = 0;
 	int op;
 
-	while ((op = getopt_long(argc, argv, "@c:s:S:f:ht:", long_options, &option_index)) != -1) {
+	while ((op = getopt_long(argc, argv, "@c:s:S:f:hp:t:", long_options, &option_index)) != -1) {
 		switch(op) {
 			case '@':
 				printf("%s compiled on %s at %s\n", argv[0], __DATE__, __TIME__);
@@ -253,6 +306,13 @@ int main(int argc, char **argv) {
 				if (thrnum == 0) {
 					printf("invalid thread number %s, using default\n", optarg);
 					thrnum = DEFAULT_THRNUM;
+				}
+				break;
+			case 'p':
+				thrarg.pipeline = atoi(optarg);
+				if (thrarg.pipeline == 0) {
+					printf("invalid pipeline number %s, using default\n", optarg);
+					thrarg.pipeline = DEFAULT_PIPELINE;
 				}
 				break;
 			default:
