@@ -27,11 +27,13 @@
 
 
 // default values for conf
-#define DEFAULT_UID      0
-#define DEFAULT_RECV_NUM 100
-#define DEFAULT_MSIZE    64*1024
-#define DEFAULT_PORT     5640
-#define DEFAULT_MAX_FID  1024
+#define DEFAULT_UID        0
+#define DEFAULT_RECV_NUM   100
+#define DEFAULT_MSIZE      64*1024
+#define DEFAULT_PORT       5640
+#define DEFAULT_MAX_FID    1024
+#define DEFAULT_DEBUG      0x01
+#define DEFAULT_RDMA_DEBUG 0x01
 
 // max tag = recv_num for ganesha
 #define DEFAULT_MAX_TAG  100

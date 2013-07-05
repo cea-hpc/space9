@@ -165,6 +165,7 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 	}
 	~p9_handle() {
 		p9_destroy(&$self);
+		errno = 0;
 	}
 %feature("docstring", "change debug and print old one") debug;
 	int debug(int dbg) {
@@ -224,6 +225,9 @@ mode is file mode if created, umask is applied") open;
 	}
 	void mv(char *src, char *dst) {
 		errno = p9l_mv($self, src, dst);
+	}
+	void cp(char *src, char *dst) {
+		errno = p9l_cp($self, src, dst);
 	}
 	void rm(char *path) {
 		errno = p9l_rm($self, path);
@@ -377,10 +381,11 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 	}
 	~fid() {
 		if ($self->ptr != NULL) {
-			errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
+			p9p_clunk($self->ptr->p9_handle, &$self->ptr);
 			Py_DECREF($self->handle_obj);
 		}
 		free($self);
+		errno = 0;
 	}
 %exception {
 	errno = 0;

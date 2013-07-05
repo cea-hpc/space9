@@ -1121,15 +1121,14 @@ int p9p_readdir(struct p9_handle *p9_handle, struct p9_fid *fid, uint64_t *poffs
 }
 
 
-ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, size_t count, uint64_t offset, msk_data_t **pdata) {
+ssize_t p9pz_read_send(struct p9_handle *p9_handle, struct p9_fid *fid, size_t count, uint64_t offset, uint16_t *ptag) {
 	ssize_t rc;
 	msk_data_t *data;
 	uint16_t tag;
-	uint8_t msgtype;
 	uint8_t *cursor;
 
 	/* Sanity check */
-	if (p9_handle == NULL || fid == NULL || zbuf == NULL || pdata == NULL || count == 0 || (fid->openflags & RDFLAG) == 0)
+	if (p9_handle == NULL || fid == NULL || count == 0 || (fid->openflags & RDFLAG) == 0)
 		return -EINVAL;
 
 
@@ -1156,6 +1155,16 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, 
 	rc = p9c_sendrequest(p9_handle, data, tag);
 	if (rc != 0)
 		return -rc;
+
+	*ptag = tag;
+	return 0;
+}
+
+ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pdata, uint16_t tag) {
+	ssize_t rc;
+	msk_data_t *data;
+	uint8_t msgtype;
+	uint8_t *cursor;
 
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
@@ -1185,6 +1194,20 @@ ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, 
 	return rc;
 }
 
+ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, size_t count, uint64_t offset, msk_data_t **pdata) {
+	ssize_t rc;
+	uint16_t tag;
+
+	if (zbuf == NULL || pdata == NULL)
+		return -EINVAL;
+
+	rc = p9pz_read_send(p9_handle, fid, count, offset, &tag);
+	if (rc)
+		return rc;
+
+	return p9pz_read_wait(p9_handle, zbuf, pdata, tag);
+}
+
 
 ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
 	char *zbuf;
@@ -1206,11 +1229,10 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, siz
 }
 
 
-ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *data, uint64_t offset) {
+ssize_t p9pz_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *data, uint64_t offset, uint16_t *ptag) {
 	ssize_t rc;
 	msk_data_t *header_data;
 	uint16_t tag;
-	uint8_t msgtype;
 	uint8_t *cursor;
 
 	/* Sanity check */
@@ -1244,11 +1266,21 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *
 	if (rc != 0)
 		return -rc;
 
-	rc = p9c_getreply(p9_handle, &header_data, tag);
-	if (rc != 0 || header_data == NULL)
+	*ptag = tag;
+	return 0;
+}
+
+ssize_t p9pz_write_wait(struct p9_handle *p9_handle, uint16_t tag) {
+	ssize_t rc;
+	msk_data_t *data;
+	uint8_t *cursor;
+	uint8_t msgtype;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
 		return -rc;
 
-	cursor = header_data->data;
+	cursor = data->data;
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RWRITE:
@@ -1265,17 +1297,26 @@ ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *
 			rc = -EIO;
 	}
 
-	p9c_putreply(p9_handle, header_data);
+	p9c_putreply(p9_handle, data);
 
 	return rc;
 }
 
+ssize_t p9pz_write(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *data, uint64_t offset) {
+	ssize_t rc;
+	uint16_t tag;
 
-ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
+	rc = p9pz_write_send(p9_handle, fid, data, offset, &tag);
+	if (rc)
+		return rc;
+
+	return p9pz_write_wait(p9_handle, tag);
+}
+
+ssize_t p9p_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset, uint16_t *ptag) {
 	ssize_t rc;
 	msk_data_t *data;
 	uint16_t tag;
-	uint8_t msgtype;
 	uint8_t *cursor;
 
 	/* Sanity check */
@@ -1305,6 +1346,16 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, si
 	if (rc != 0)
 		return -rc;
 
+	*ptag = tag;
+	return 0;
+}
+
+ssize_t p9p_write_wait(struct p9_handle *p9_handle, uint16_t tag) {
+	ssize_t rc;
+	msk_data_t *data;
+	uint8_t msgtype;
+	uint8_t *cursor;
+	
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
 		return -rc;
@@ -1331,6 +1382,16 @@ ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, si
 	return rc;
 }
 
+ssize_t p9p_write(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
+	ssize_t rc;
+	uint16_t tag;
+
+	rc = p9p_write_send(p9_handle, fid, buf, count, offset, &tag);
+	if (rc)
+		return rc;
+
+	return p9p_write_wait(p9_handle, tag);
+}
 
 int p9p_xattrwalk(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid **pnewfid, char *name, uint64_t *psize) {
 	int rc;

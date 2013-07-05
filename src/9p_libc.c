@@ -266,7 +266,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 		path_canonicalizer(target_canon_path);
 		rc = p9l_rootwalk(p9_handle, target_canon_path, &target_fid, 0);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", target_canon_path, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", target_canon_path, strerror(rc), rc);
 			break;
 		}
 
@@ -276,7 +276,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 		/* check if linkname is a directory first */
 		rc = p9l_rootwalk(p9_handle, linkname_canon_path, &linkname_fid, 0);
 		if (rc != 0 && rc != ENOENT) {
-			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", linkname_canon_path, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", linkname_canon_path, strerror(rc), rc);
 			break;
 		} else if (rc == ENOENT || linkname_fid->qid.type != P9_QTDIR) {
 			/* not a directory, walk to dirname instead */
@@ -284,7 +284,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 			if (linkname_dirname[0] != '\0') {
 				rc = p9l_rootwalk(p9_handle, linkname_dirname, &linkname_fid, 0);
 				if (rc) {
-					INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", linkname_dirname, strerror(rc), rc);
+					INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", linkname_dirname, strerror(rc), rc);
 					break;
 				}
 			} else {
@@ -300,7 +300,7 @@ int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname) {
 
 		rc = p9p_link(p9_handle, target_fid, linkname_fid, linkname_basename);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "link failed with target fid %u (%s) to dir fid %u (%s), name %s, error: %s (%d)", target_fid->fid, target_fid->path, linkname_fid->fid, linkname_fid->path, linkname_basename, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "link failed with target fid %u (%s) to dir fid %u (%s), name %s, error: %s (%d)", target_fid->fid, target_fid->path, linkname_fid->fid, linkname_fid->path, linkname_basename, strerror(rc), rc);
 		}
 	} while (0);
 
@@ -336,7 +336,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		if (src_dirname[0] != '\0') {
 			rc = p9l_rootwalk(p9_handle, src_dirname, &src_fid, 0);
 			if (rc) {
-				INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", src_dirname, strerror(rc), rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", src_dirname, strerror(rc), rc);
 				break;
 			}
 		} else {
@@ -349,7 +349,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 		/* check if dst is a directory first */
 		rc = p9l_rootwalk(p9_handle, dst_canon_path, &dst_fid, 0);
 		if (rc != 0 && rc != ENOENT) {
-			INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
 			break;
 		} else if (rc == ENOENT || dst_fid->qid.type != P9_QTDIR) {
 			/* not a directory, walk to dirname instead */
@@ -357,7 +357,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 			if (dst_dirname[0] != '\0') {
 				rc = p9l_rootwalk(p9_handle, dst_dirname, &dst_fid, 0);
 				if (rc) {
-					INFO_LOG(p9_handle->debug, "walk failed to '%s', %s (%d)", dst_dirname, strerror(rc), rc);
+					INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", dst_dirname, strerror(rc), rc);
 					break;
 				}
 			} else {
@@ -373,7 +373,7 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 
 		rc = p9p_renameat(p9_handle, src_fid, src_basename, dst_fid, dst_basename);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "renameat failed on dir fid %u (%s), name %s to dir fid %u (%s), name %s, error: %s (%d)", src_fid->fid, src_fid->path, src_basename, dst_fid->fid, dst_fid->path, dst_basename, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "renameat failed on dir fid %u (%s), name %s to dir fid %u (%s), name %s, error: %s (%d)", src_fid->fid, src_fid->path, src_basename, dst_fid->fid, dst_fid->path, dst_basename, strerror(rc), rc);
 		}
 	} while (0);
 
@@ -384,14 +384,118 @@ int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst) {
 	return rc;
 }
 
-int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid) {
+int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst) {
+	char *src_canon_path, *src_dirname, *src_basename;
+	char *dst_canon_path;
+	struct p9_fid *src_fid = NULL, *dst_fid = NULL, *dst_dir_fid = NULL;
+	int rc;
+	char *zbuf;
+	msk_data_t wdata, *data;
+	struct p9_setattr attr;
+	uint64_t offset;
+
+	/* sanity checks */
+	if (p9_handle == NULL || src == NULL || dst == NULL)
+		return EINVAL;
+
+	src_canon_path = malloc(strlen(src)+1);
+	dst_canon_path = malloc(strlen(dst)+1);
+
+	do {
+		if (!src_canon_path || !dst_canon_path) {
+			rc = ENOMEM;
+			break;
+		}
+
+		strcpy(src_canon_path, src);
+		path_canonicalizer(src_canon_path);
+		rc = p9l_open(p9_handle, src, &src_fid, O_RDONLY, 0, 0);
+		if (rc) {
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "open failed on '%s', %s (%d)", src_canon_path, strerror(rc), rc);
+			break;
+		}
+		path_split(src_canon_path, &src_dirname, &src_basename);
+
+		strcpy(dst_canon_path, dst);
+		path_canonicalizer(dst_canon_path);
+
+		/* check if dst is a directory first */
+		rc = p9l_rootwalk(p9_handle, dst_canon_path, &dst_dir_fid, 0);
+		if (rc != 0 && rc != ENOENT) {
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed to '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
+			break;
+		} else if (rc == ENOENT) {
+			/* doesn't exist, create it */
+			rc = p9l_open(p9_handle, dst_canon_path, &dst_fid, O_WRONLY | O_CREAT | O_TRUNC, 0666, 0);
+			if (rc) {
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "open failed on '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
+				break;
+			}
+		} else if (dst_dir_fid->qid.type != P9_QTDIR) {
+			/* exists, open and truncate */
+			dst_fid = dst_dir_fid;
+			dst_dir_fid = NULL;
+			rc = p9p_lopen(p9_handle, dst_fid, O_WRONLY, NULL);
+			if (rc) {
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot open existing file '%s', %s (%d)", dst_dir_fid->path, strerror(rc), rc);
+				break;
+			}
+			memset(&attr, 0, sizeof(attr));
+			attr.valid = P9_SETATTR_SIZE;
+			attr.size = 0;
+			p9p_setattr(p9_handle, dst_fid, &attr);
+		} else {
+			/* is a directory, open inside */
+			rc = p9l_openat(p9_handle, dst_dir_fid, src_basename, &dst_fid, O_WRONLY | O_CREAT | O_TRUNC, 0666, 0);
+			if (rc) {
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "open failed on '%s', %s (%d)", dst_canon_path, strerror(rc), rc);
+				break;
+			}
+		}
+
+		/* copy stuff */
+		offset = 0;
+		do {
+			rc = p9pz_read(p9_handle, src_fid, &zbuf, p9_handle->msize, offset, &data);
+			if (rc < 0) {
+				printf("read failed on fid %u (%s) at offset %"PRIu64"\n", src_fid->fid, src_fid->path, offset);
+				rc = -rc;
+				break;
+			}
+			if (rc == 0)
+				break;
+			wdata.data = zbuf;
+			wdata.size = rc;
+			wdata.max_size = rc;
+			wdata.mr = data->mr;
+			rc = p9pz_write(p9_handle, dst_fid, &wdata, offset);
+			if (rc < 0) {
+				printf("write failed on fid %u (%s) at offset %"PRIu64"\n", dst_fid->fid, dst_fid->path, offset);
+				rc = -rc;
+				break;
+			}
+			offset += rc;
+			p9c_putreply(p9_handle, data);
+		} while (rc > 0);
+
+	} while (0);
+
+	p9l_clunk(&src_fid);
+	p9l_clunk(&dst_fid);
+	p9l_clunk(&dst_dir_fid);
+	free(src_canon_path);
+	free(dst_canon_path);
+	return rc;
+}
+
+int p9l_openat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid) {
 	char *canon_path, *dirname, *basename;
 	struct p9_fid *fid = NULL;
 	struct p9_setattr attr;
 	int rc, relative;
 
 	/* sanity checks */
-	if (p9_handle == NULL || pfid == NULL || path == NULL)
+	if (p9_handle == NULL || dfid == NULL || pfid == NULL || path == NULL)
 		return EINVAL;
 
 	canon_path = malloc(strlen(path)+1);
@@ -402,7 +506,7 @@ int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint
 	path_canonicalizer(canon_path);
 
 	do {
-		rc = p9l_rootwalk(p9_handle, canon_path, &fid, 0);
+		rc = p9l_walk(p9_handle, dfid, canon_path, &fid, 0);
 		if (rc && flags & O_CREAT) {
 			/* file doesn't exist */
 			relative = path_split(canon_path, &dirname, &basename);
@@ -412,22 +516,22 @@ int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint
 
 			rc = p9p_walk(p9_handle, relative ? p9_handle->cwd : p9_handle->root_fid, dirname, &fid);
 			if (rc) {
-				INFO_LOG(p9_handle->debug, "cannot walk into parent dir '%s', %s (%d)", dirname, strerror(rc), rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot walk into parent dir '%s', %s (%d)", dirname, strerror(rc), rc);
 				break;
 			}
 			rc = p9p_lcreate(p9_handle, fid, basename, flags, mode & p9_handle->umask, gid, NULL);
 			if (rc) {
-				INFO_LOG(p9_handle->debug, "cannot create file '%s' in '%s', %s (%d)", basename, dirname, strerror(rc), rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot create file '%s' in '%s', %s (%d)", basename, dirname, strerror(rc), rc);
 				break;
 			}
 		} else if (rc) {
-			INFO_LOG(p9_handle->debug, "cannot open file '%s', %s (%d)", canon_path, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot open file '%s', %s (%d)", canon_path, strerror(rc), rc);
 			break;
 		} else {
 			/* file exists, open and eventually truncate */
 			rc = p9p_lopen(p9_handle, fid, flags, NULL);
 			if (rc) {
-				INFO_LOG(p9_handle->debug, "cannot open existing file '%s', %s (%d)", canon_path, strerror(rc), rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot open existing file '%s', %s (%d)", canon_path, strerror(rc), rc);
 				break;
 			}
 			if (flags & O_TRUNC) {
@@ -451,6 +555,10 @@ int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint
 
 	free(canon_path);
 	return rc;
+}
+
+int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid) {
+	return p9l_openat(p9_handle, (path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid, flags, mode, gid);
 }
 
 int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid) {
@@ -577,7 +685,7 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 		p9c_dereg_mr(fid->p9_handle, &data);
 	}
 	if (rc < 0) {
-		INFO_LOG(fid->p9_handle->debug, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
+		INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
 	} else {
 		rc = sent;
 	}
@@ -622,7 +730,7 @@ ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count) {
 	} while (total < count);
 
 	if (rc < 0) {
-		INFO_LOG(fid->p9_handle->debug, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
+		INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
 	} else {
 		rc = total;
 	}
@@ -659,7 +767,7 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void 
 
 	rc = p9l_open(p9_handle, path, &fid, 0, 0, 0);
 	if (rc) {
-		INFO_LOG(p9_handle->debug, "couldn't open '%s', error: %s (%d)\n", path, strerror(rc), rc);
+		INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "couldn't open '%s', error: %s (%d)\n", path, strerror(rc), rc);
 		return -rc;
 	}
 
@@ -672,7 +780,7 @@ ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void 
 
 		if (count < 0) {
 			rc = count;
-			INFO_LOG(p9_handle->debug, "readdir failed on fid %u (%s): %s (%d)\n", p9_handle->cwd->fid, p9_handle->cwd->path, strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "readdir failed on fid %u (%s): %s (%d)\n", p9_handle->cwd->fid, p9_handle->cwd->path, strerror(rc), rc);
 		}
 	} else {
 		rc = -ENOTDIR;
@@ -744,7 +852,7 @@ ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count) 
 	do {
 		rc = p9p_xattrwalk(p9_handle, fid, &attrfid, field, &size);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "xattrwalk failed: %s (%zd)", strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "xattrwalk failed: %s (%zd)", strerror(rc), rc);
 			rc = -rc;
 			break;
 		}
@@ -753,10 +861,10 @@ ssize_t p9l_fxattrget(struct p9_fid *fid, char *field, char *buf, size_t count) 
 
 		rc = p9l_read(attrfid, buf, realcount);
 		if (rc < 0) {
-			INFO_LOG(p9_handle->debug, "read failed: %s (%zd)", strerror(-rc), -rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "read failed: %s (%zd)", strerror(-rc), -rc);
 			break;
 		} else if (rc != realcount) {
-			INFO_LOG(p9_handle->debug, "read screwup, didn't read everything (expected %zu, got %zu)", realcount, rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "read screwup, didn't read everything (expected %zu, got %zu)", realcount, rc);
 			buf[rc] = '\0';
 			//rc = -EIO;
 			break;
@@ -782,14 +890,14 @@ ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, 
 	do {
 		rc = p9p_walk(p9_handle, fid, NULL, &attrfid);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "clone walk failed: %s (%zd)", strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "clone walk failed: %s (%zd)", strerror(rc), rc);
 			rc = -rc;
 			break;
 		}
 
 		rc = p9p_xattrcreate(p9_handle, attrfid, field, count, flags);
 		if (rc) {
-			INFO_LOG(p9_handle->debug, "xattrcreate failed: %s (%zd)", strerror(rc), rc);
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "xattrcreate failed: %s (%zd)", strerror(rc), rc);
 			rc = -rc;
 			break;
 		}
@@ -797,10 +905,10 @@ ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, 
 		if (count) {
 			rc = p9l_write(attrfid, buf, count);
 			if (rc < 0) {
-				INFO_LOG(p9_handle->debug, "write failed: %s (%zd)", strerror(-rc), -rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "write failed: %s (%zd)", strerror(-rc), -rc);
 				break;
 			} else if (rc != count) {
-				INFO_LOG(p9_handle->debug, "write screwup, didn't write everything (expected %zu, got %zu)", count, rc);
+				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "write screwup, didn't write everything (expected %zu, got %zu)", count, rc);
 				rc = -EIO;
 				break;
 			}

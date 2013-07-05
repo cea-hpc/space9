@@ -217,8 +217,9 @@ typedef int (*p9p_readdir_cb) (void *arg, struct p9_handle *p9_handle, struct p9
 #define P9_DEBUG_EVENT 0x0001
 #define P9_DEBUG_SETUP 0x0002
 #define P9_DEBUG_PROTO 0x0004
-#define P9_DEBUG_SEND  0x0008
-#define P9_DEBUG_RECV  0x0010
+#define P9_DEBUG_LIBC  0x0008
+#define P9_DEBUG_SEND  0x0010
+#define P9_DEBUG_RECV  0x0020
 
 /**
  * \defgroup init init functions
@@ -812,6 +813,21 @@ int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struc
 int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
 
 /**
+ * @brief complex open by directory+path call
+ * Handles new file creation (if O_CREAT) and other flags (O_TRUNC, O_APPEND)
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     dfid:		directory fid
+ * @param[in]     path:		path of file, relative from dfid
+ * @param[out]    pfid:		pointer to new fid
+ * @param[in]     flags:	bitwise flag with O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND
+ * @param[in]     mode:		mode of new file if created. umask IS applied.
+ * @param[in]     gid:		gid of new file if created.
+ * @return 0 on success, errno value on error.
+ */
+int p9l_openat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
+
+/**
  * @brief ls by path
  * opens directory given by path name and applies callback on each entry with custom arg
  * see examples in 9p_shell_functions.c
@@ -842,6 +858,16 @@ int p9l_cd(struct p9_handle *p9_handle, char *path);
  * @return 0 on success, errno value on error.
  */
 int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
+
+/**
+ * @brief cp
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     src:		source file name
+ * @param[in]     dst:		destination file name
+ * @return 0 on success, errno value on error.
+ */
+int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst);
 
 /**
  * @brief rm AND rmdir - there is NO distinction!!!

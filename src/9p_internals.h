@@ -199,6 +199,13 @@ void p9_send_err_cb(msk_trans_t *trans, msk_data_t *data, void *arg);
  */
 int p9p_rewalk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, uint32_t newfid_i);
 
-int p9p_relopen(struct p9_handle *p9_handle, struct p9_fid *fid, uint32_t flags);
+ssize_t p9pz_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, msk_data_t *data, uint64_t offset, uint16_t *ptag);
+ssize_t p9pz_write_wait(struct p9_handle *p9_handle, uint16_t tag);
+ssize_t p9p_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset, uint16_t *ptag);
+ssize_t p9p_write_wait(struct p9_handle *p9_handle, uint16_t tag);
+ssize_t p9pz_read_send(struct p9_handle *p9_handle, struct p9_fid *fid, size_t count, uint64_t offset, uint16_t *ptag);
+ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pdata, uint16_t tag);
+
+
 
 #endif

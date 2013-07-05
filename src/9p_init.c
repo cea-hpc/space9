@@ -139,6 +139,8 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	p9_conf->msize = DEFAULT_MSIZE;
 	p9_conf->max_fid = DEFAULT_MAX_FID;
 	p9_conf->max_tag = DEFAULT_MAX_TAG;
+	p9_conf->debug = DEFAULT_DEBUG;
+	p9_conf->trans_attr.debug = DEFAULT_RDMA_DEBUG;
 #if HAVE_MOOSHIKA
 	p9_conf->net_ops = &p9_rdma_ops;
 #else
