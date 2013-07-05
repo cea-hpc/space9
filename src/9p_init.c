@@ -42,6 +42,7 @@ struct p9_conf {
 	uint32_t max_fid;
 	uint32_t max_tag;
 	uint32_t msize;
+	uint32_t pipeline;
 	uint32_t debug;
 	struct p9_net_ops *net_ops;
 	struct msk_trans_attr trans_attr;
@@ -108,6 +109,7 @@ static struct conf conf_array[] = {
 	{ "uid", UINT, offsetof(struct p9_conf, uid) },
 	{ "max_fid", UINT, offsetof(struct p9_conf, max_fid) },
 	{ "max_tag", UINT, offsetof(struct p9_conf, max_tag) },
+	{ "pipeline", UINT, offsetof(struct p9_conf, pipeline) },
 	{ "net_type", NET_TYPE, 0 },
 	{ NULL, 0, 0 }
 };
@@ -140,6 +142,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	p9_conf->max_fid = DEFAULT_MAX_FID;
 	p9_conf->max_tag = DEFAULT_MAX_TAG;
 	p9_conf->debug = DEFAULT_DEBUG;
+	p9_conf->pipeline = DEFAULT_PIPELINE;
 	p9_conf->trans_attr.debug = DEFAULT_RDMA_DEBUG;
 #if HAVE_MOOSHIKA
 	p9_conf->net_ops = &p9_rdma_ops;
@@ -320,6 +323,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 		strcpy(p9_handle->aname, p9_conf.aname);
 
 		p9_handle->debug = p9_conf.debug;
+		p9_handle->pipeline = p9_conf.pipeline;
 		p9_handle->uid = p9_conf.uid;
 		p9_handle->recv_num = p9_conf.trans_attr.rq_depth;
 		p9_handle->msize = p9_conf.msize;

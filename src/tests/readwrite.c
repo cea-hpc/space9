@@ -39,11 +39,10 @@
 
 
 #define DEFAULT_THRNUM 1
-#define DEFAULT_CHUNKSIZE (1024*1024-P9_ROOM_TWRITE)
+#define DEFAULT_CHUNKSIZE (8*(1024*1024-P9_ROOM_TWRITE))
 #define DEFAULT_TOTALSIZE 2*1024*1024*1024L
 #define DEFAULT_FILENAME "readwrite"
 #define DEFAULT_CONFFILE "../sample.conf"
-#define DEFAULT_PIPELINE 2
 
 struct thrarg {
 	struct p9_handle *p9_handle;
@@ -51,7 +50,6 @@ struct thrarg {
 	pthread_barrier_t barrier;
 	struct timeval write;
 	struct timeval read;
-	uint32_t pipeline;
 	uint32_t chunksize;
 	uint64_t totalsize;
 	char *basename;
@@ -63,17 +61,11 @@ static void *readwritethr(void* arg) {
 	struct p9_fid *fid;
 	struct timeval start, write, read;
 	int rc, tmprc;
-	uint16_t *tag;
-	int pipefill, pipeget;
-	uint64_t offset;
-	msk_data_t *data;
-	char *zbuf;
 	char *buffer;
 
 	buffer = malloc(thrarg->chunksize);
-	tag = malloc(thrarg->pipeline * sizeof(uint16_t));
 
-	if (!buffer || !tag) {
+	if (!buffer) {
 		printf("could not allocate buffer\n");
 		exit(1);
 	}
@@ -95,47 +87,13 @@ static void *readwritethr(void* arg) {
 
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
-		offset = 0LL;
-		data = malloc(sizeof(msk_data_t));
-		data->data = (uint8_t*)buffer;
-		data->size = thrarg->chunksize;
-		data->max_size = thrarg->chunksize;
-		p9c_reg_mr(p9_handle, data);
-		pipeget = -thrarg->pipeline+1;
-		pipefill = 0;
+		p9l_fseek(fid, 0, SEEK_SET);
 		do {
-			if (thrarg->totalsize-offset < thrarg->chunksize)
-				data->size = thrarg->totalsize-offset;
-			rc = p9pz_write_send(p9_handle, fid, data, offset, &tag[pipefill%thrarg->pipeline]);
-			if (rc < 0)
-				break;
-			offset += data->size;
-			if (offset >= thrarg->totalsize)
-				break;
-			if (pipeget >= 0) {
-				rc = p9pz_write_wait(p9_handle, tag[pipeget%thrarg->pipeline]);
-				if (rc < 0) {
-					printf("write failed: %s (%d)\n", strerror(-rc), -rc);
-					break;
-				}
-				if (rc != thrarg->chunksize) {
-					printf("not a full write!!! wrote %u, expected %u\n", rc, thrarg->chunksize);
-				}
-			}
-			pipeget++;
-			pipefill++;
-		} while (thrarg->totalsize > offset);
-		while (pipeget < pipefill) {
-			rc = p9pz_write_wait(p9_handle, tag[pipeget%thrarg->pipeline]);
-			if (rc < 0)
-				printf("write failed: %s (%d)\n", strerror(-rc), -rc);
-			pipeget++;
-		}
-		p9c_dereg_mr(p9_handle, data);
-		free(data);
+			rc = p9l_write(fid, buffer, thrarg->chunksize);
+		} while (rc > 0 && thrarg->totalsize > fid->offset);
 		if (rc < 0) {
 			rc = -rc;
-			printf("write failed at offset %"PRIu64", error: %s (%d)\n", offset, strerror(rc), rc);
+			printf("write failed at offset %"PRIu64", error: %s (%d)\n", fid->offset, strerror(rc), rc);
 			break;
 		}
 		rc = p9p_fsync(p9_handle, fid);
@@ -151,43 +109,13 @@ static void *readwritethr(void* arg) {
 		/* read */
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
-		offset = 0LL;
-		pipeget = -thrarg->pipeline+1;
-		pipefill = 0;
+		p9l_fseek(fid, 0, SEEK_SET);
 		do {
-			if (thrarg->totalsize-offset < thrarg->chunksize)
-				data->size = thrarg->totalsize-offset;
-			rc = p9pz_read_send(p9_handle, fid, ((thrarg->totalsize-offset < thrarg->chunksize) ? thrarg->totalsize-offset : thrarg->chunksize), offset, &tag[pipefill%thrarg->pipeline]);
-			if (rc < 0)
-				break;
-			offset += data->size;
-			if (offset >= thrarg->totalsize)
-				break;
-
-			if (pipeget >= 0) {
-				rc = p9pz_read_wait(p9_handle, &zbuf, &data, tag[pipeget%thrarg->pipeline]);
-				if (rc < 0) {
-					printf("read failed: %s (%d)\n", strerror(-rc), -rc);
-					break;
-				}
-				if (rc != thrarg->chunksize) {
-					printf("not a full read!!! read %u, expected %u\n", rc, thrarg->chunksize);
-				}
-				p9c_putreply(p9_handle, data);
-			}
-			pipeget++;
-			pipefill++;
-		} while (thrarg->totalsize > offset);
-		while (pipeget < pipefill) {
-			rc = p9pz_read_wait(p9_handle, &zbuf, &data, tag[pipeget%thrarg->pipeline]);
-			if (rc < 0)
-				printf("write failed: %s (%d)\n", strerror(-rc), -rc);
-			p9c_putreply(p9_handle, data);
-			pipeget++;
-		}
+			rc = p9l_read(fid, buffer, thrarg->chunksize);
+		} while (rc > 0 && thrarg->totalsize > fid->offset);
 		if (rc < 0) {
 			rc = -rc;
-			printf("read failed at offset %"PRIu64", error: %s (%d)\n", offset, strerror(rc), rc);
+			printf("read failed at offset %"PRIu64", error: %s (%d)\n", fid->offset, strerror(rc), rc);
 			break;
 		} else
 			rc = 0;
@@ -207,6 +135,7 @@ static void *readwritethr(void* arg) {
 		}
 	}
 
+	free(buffer);
 
 	if (write.tv_usec || write.tv_sec)
 		printf("Wrote %"PRIu64"MB in %lu.%06lus - estimate speed: %luMB/s\n", thrarg->totalsize/1024/1024, write.tv_sec, write.tv_usec, thrarg->totalsize/(write.tv_sec*1000000+write.tv_usec));
@@ -230,7 +159,7 @@ static void print_help(char **argv) {
 	printf("Usage: %s [-c conf] [-s chunk-size] [-S file-size] [-f filename] [-t thread-num]\n", argv[0]);
 	printf(	"Optional arguments:\n"
 		"	-t, --threads num: number of operating threads\n"
-		"	-p, --pipeline num: number of simultaneous requests on a single file\n"
+		"	-p, --pipeline num: number of simultaneous requests on a single file (overwrites conf)\n"
 		"	-c, --conf file: conf file to use\n"
 		"	-s, --chunk[-size] size: chunk size to use, default is optimal based on msize\n"
 		"	-S, --filesize size: size of the created files\n"
@@ -242,6 +171,7 @@ int main(int argc, char **argv) {
 	char *conffile;
 	pthread_t *thrid;
 	int thrnum = 0;
+	int pipeline;
 	struct thrarg thrarg;
 
 	thrnum = DEFAULT_THRNUM;
@@ -249,7 +179,7 @@ int main(int argc, char **argv) {
 	thrarg.chunksize = DEFAULT_CHUNKSIZE;
 	thrarg.totalsize = DEFAULT_TOTALSIZE;
 	thrarg.basename = DEFAULT_FILENAME;
-	thrarg.pipeline = DEFAULT_PIPELINE;
+	pipeline = 0;
 	conffile = DEFAULT_CONFFILE;
 	pthread_mutex_init(&thrarg.lock, NULL);
 	pthread_barrier_init(&thrarg.barrier, NULL, thrnum);
@@ -309,10 +239,10 @@ int main(int argc, char **argv) {
 				}
 				break;
 			case 'p':
-				thrarg.pipeline = atoi(optarg);
-				if (thrarg.pipeline == 0) {
-					printf("invalid pipeline number %s, using default\n", optarg);
-					thrarg.pipeline = DEFAULT_PIPELINE;
+				pipeline = atoi(optarg);
+				if (pipeline == 0) {
+					printf("invalid pipeline number %s, using conf value\n", optarg);
+					pipeline = 0;
 				}
 				break;
 			default:
@@ -336,6 +266,9 @@ int main(int argc, char **argv) {
                 ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
                 return rc;
         }
+
+	if (pipeline)
+		thrarg.p9_handle->pipeline = pipeline;
 
         INFO_LOG(1, "Init success");
 

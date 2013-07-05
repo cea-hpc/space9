@@ -389,8 +389,7 @@ int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst) {
 	char *dst_canon_path;
 	struct p9_fid *src_fid = NULL, *dst_fid = NULL, *dst_dir_fid = NULL;
 	int rc;
-	char *zbuf;
-	msk_data_t wdata, *data;
+	msk_data_t *data;
 	struct p9_setattr attr;
 	uint64_t offset;
 
@@ -456,7 +455,7 @@ int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst) {
 		/* copy stuff */
 		offset = 0;
 		do {
-			rc = p9pz_read(p9_handle, src_fid, &zbuf, p9_handle->msize, offset, &data);
+			rc = p9pz_read(p9_handle, src_fid, p9_handle->msize, offset, &data);
 			if (rc < 0) {
 				printf("read failed on fid %u (%s) at offset %"PRIu64"\n", src_fid->fid, src_fid->path, offset);
 				rc = -rc;
@@ -464,11 +463,7 @@ int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst) {
 			}
 			if (rc == 0)
 				break;
-			wdata.data = zbuf;
-			wdata.size = rc;
-			wdata.max_size = rc;
-			wdata.mr = data->mr;
-			rc = p9pz_write(p9_handle, dst_fid, &wdata, offset);
+			rc = p9pz_write(p9_handle, dst_fid, data, offset);
 			if (rc < 0) {
 				printf("write failed on fid %u (%s) at offset %"PRIu64"\n", dst_fid->fid, dst_fid->path, offset);
 				rc = -rc;
@@ -654,8 +649,11 @@ int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence) {
 
 ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 	ssize_t rc;
-	msk_data_t data;
-	size_t sent = 0;
+	size_t sent = 0, subsize;
+	struct p9_pipeline *pipeline;
+	int tag_first, tag_last;
+	const uint32_t n_pipeline = fid->p9_handle->pipeline;
+	const uint32_t chunksize = p9p_write_len(fid->p9_handle, count);
 
 	/* sanity checks */
 	if (fid == NULL || buffer == NULL || (fid->openflags & WRFLAG) == 0)
@@ -670,19 +668,75 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 			sent += rc;
 		} while (sent < count);
 	} else { /* register the whole buffer and send it */
-		data.data = buffer;
-		data.size = count;
-		data.max_size = count;
-		p9c_reg_mr(fid->p9_handle, &data);
+		pipeline = malloc(fid->p9_handle->pipeline * sizeof(struct p9_pipeline));
+		pipeline[0].data.data = buffer;
+		pipeline[0].data.size = count;
+		pipeline[0].data.max_size = count;
+		p9c_reg_mr(fid->p9_handle, &pipeline[0].data);
+		for (tag_first = 0; tag_first < fid->p9_handle->pipeline; tag_first++) {
+			pipeline[tag_first].data.mr = pipeline[0].data.mr;
+			pipeline[tag_first].data.size = chunksize;
+			pipeline[tag_first].data.max_size = chunksize;
+		}
+
+		tag_first = 1 - fid->p9_handle->pipeline;
+		tag_last = 0;
 		do {
-			data.size = count - sent;
-			data.data = buffer + sent;
-			rc = p9pz_write(fid->p9_handle, fid, &data, fid->offset);
-			if (rc <= 0)
+			if (count - sent < chunksize)
+				pipeline[tag_last % n_pipeline].data.size = count - sent;
+
+			pipeline[tag_last % n_pipeline].data.data = buffer + sent;
+			pipeline[tag_last % n_pipeline].offset = fid->offset + sent;
+			rc = p9pz_write_send(fid->p9_handle, fid, &pipeline[tag_last % n_pipeline].data, fid->offset + sent, &pipeline[tag_last % n_pipeline].tag);
+			if (rc < 0)
 				break;
-			fid->offset += rc;
-		} while (sent < count);
-		p9c_dereg_mr(fid->p9_handle, &data);
+			sent += chunksize;
+			tag_last++;
+			if (sent >= count)
+				break;
+			if (tag_first >= 0) {
+				rc = p9pz_write_wait(fid->p9_handle, pipeline[tag_first % n_pipeline].tag);
+				if (rc < 0) {
+					INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed: %s (%zd)\n", strerror(-rc), -rc);
+					break;
+				}
+				if (rc != pipeline[tag_first % n_pipeline].data.size) {
+					INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "not a full write!!! wrote %zu, expected %u\n", rc, pipeline[tag_first % n_pipeline].data.size);
+					/* fall back to regular write /!\ NEEDS TESTING /!\ */
+					subsize = rc;
+					while (subsize < pipeline[tag_first % n_pipeline].data.size) {
+						rc = p9p_write(fid->p9_handle, fid, pipeline[tag_first % n_pipeline].data.data + subsize, pipeline[tag_first % n_pipeline].data.size - subsize, pipeline[tag_first % n_pipeline].offset + subsize);
+						if (rc < 0)
+							break;
+						subsize += rc;
+					}
+				}
+			}
+			tag_first++;
+		} while (count > sent);
+		/** FIXME wait for writes even if rc < 0, keep rc for return value - first one matters */
+		while (rc >= 0 && tag_first < tag_last) {
+			rc = p9pz_write_wait(fid->p9_handle, pipeline[tag_first % n_pipeline].tag);
+			if (rc < 0) {
+				INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed: %s (%zd)\n", strerror(-rc), -rc);
+				break;
+			}
+			if (rc != pipeline[tag_first % n_pipeline].data.size) {
+				INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "not a full write!!! wrote %zu, expected %u\n", rc, pipeline[tag_first % n_pipeline].data.size);
+				/* fall back to regular write /!\ NEEDS TESTING /!\ */
+				subsize = rc;
+				while (subsize < pipeline[tag_first % n_pipeline].data.size) {
+					rc = p9p_write(fid->p9_handle, fid, pipeline[tag_first % n_pipeline].data.data + subsize, pipeline[tag_first % n_pipeline].data.size - subsize, pipeline[tag_first % n_pipeline].offset + subsize);
+					if (rc < 0)
+						break;
+					subsize += rc;
+				}
+			}
+			tag_first++;
+		}
+
+		p9c_dereg_mr(fid->p9_handle, &pipeline[0].data);
+		fid->offset += sent;
 	}
 	if (rc < 0) {
 		INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);

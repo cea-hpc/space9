@@ -1137,12 +1137,7 @@ ssize_t p9pz_read_send(struct p9_handle *p9_handle, struct p9_fid *fid, size_t c
 	if (rc != 0 || data == NULL)
 		return -rc;
 
-	if (count > p9_handle->msize - P9_ROOM_RREAD) {
-		count = p9_handle->msize - P9_ROOM_RREAD;
-		/* align IO if possible */
-		if (count > 1024*1024 && count < 1025*1024)
-			count = 1024*1024;
-	}
+	count = p9p_read_len(p9_handle, count);
 
 	p9_initcursor(cursor, data->data, P9_TREAD, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -1160,7 +1155,7 @@ ssize_t p9pz_read_send(struct p9_handle *p9_handle, struct p9_fid *fid, size_t c
 	return 0;
 }
 
-ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pdata, uint16_t tag) {
+ssize_t p9pz_read_wait(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) {
 	ssize_t rc;
 	msk_data_t *data;
 	uint8_t msgtype;
@@ -1174,9 +1169,10 @@ ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pd
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RREAD:
-			*pdata = data;
 			p9_getvalue(cursor, rc, uint32_t);
-			p9_getptr(cursor, *zbuf, char);
+			data->data += P9_ROOM_RREAD;
+			data->size -= P9_ROOM_RREAD;
+			*pdata = data;
 			break;
 
 		case P9_RERROR:
@@ -1194,23 +1190,21 @@ ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pd
 	return rc;
 }
 
-ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, size_t count, uint64_t offset, msk_data_t **pdata) {
+ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, size_t count, uint64_t offset, msk_data_t **pdata) {
 	ssize_t rc;
 	uint16_t tag;
 
-	if (zbuf == NULL || pdata == NULL)
+	if (pdata == NULL)
 		return -EINVAL;
 
 	rc = p9pz_read_send(p9_handle, fid, count, offset, &tag);
 	if (rc)
 		return rc;
 
-	return p9pz_read_wait(p9_handle, zbuf, pdata, tag);
+	return p9pz_read_wait(p9_handle, pdata, tag);
 }
 
-
 ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset) {
-	char *zbuf;
 	msk_data_t *data;
 	ssize_t rc;
 
@@ -1218,10 +1212,10 @@ ssize_t p9p_read(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, siz
 	if (p9_handle == NULL || fid == NULL || buf == NULL)
 		return -EINVAL;
 
-	rc = p9pz_read(p9_handle, fid, &zbuf, count, offset, &data);
+	rc = p9pz_read(p9_handle, fid, count, offset, &data);
 
 	if (rc >= 0) {
-		memcpy(buf, zbuf, MIN(count, rc+1));
+		memcpy(buf, data->data, MIN(count, rc+1));
 		p9c_putreply(p9_handle, data);
 	}
 
@@ -1244,12 +1238,7 @@ ssize_t p9pz_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, msk_dat
 	if (rc != 0 || header_data == NULL)
 		return -rc;
 
-	if (data->size > p9_handle->msize - P9_ROOM_TWRITE) {
-		data->size = p9_handle->msize - P9_ROOM_TWRITE;
-		/* align IO */
-		if (data->size > 1024*1024 && data->size < 1025*1024)
-			data->size = 1024*1024;
-	}
+	data->size = p9p_write_len(p9_handle, data->size);
 
 	p9_initcursor(cursor, header_data->data, P9_TWRITE, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);
@@ -1260,7 +1249,7 @@ ssize_t p9pz_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, msk_dat
 
 	header_data->next = data;
 
-	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "write fid %u (%s), offset %"PRIu64", count %u", fid->fid, fid->path, offset, data->size);
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "write tag %u,  fid %u (%s), offset %"PRIu64", count %u", tag, fid->fid, fid->path, offset, data->size);
 
 	rc = p9c_sendrequest(p9_handle, header_data, tag);
 	if (rc != 0)
@@ -1279,6 +1268,8 @@ ssize_t p9pz_write_wait(struct p9_handle *p9_handle, uint16_t tag) {
 	rc = p9c_getreply(p9_handle, &data, tag);
 	if (rc != 0 || data == NULL)
 		return -rc;
+
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "writewait tag %u", tag);
 
 	cursor = data->data;
 	p9_getheader(cursor, msgtype);
@@ -1328,8 +1319,7 @@ ssize_t p9p_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, char *bu
 	if (rc != 0 || data == NULL)
 		return -rc;
 
-	if (count > p9_handle->msize - P9_ROOM_TWRITE)
-		count = p9_handle->msize - P9_ROOM_TWRITE;
+	count = p9p_write_len(p9_handle, count);
 
 	p9_initcursor(cursor, data->data, P9_TWRITE, tag);
 	p9_setvalue(cursor, fid->fid, uint32_t);

@@ -165,6 +165,7 @@ struct p9_handle {
 	uint32_t msize;
 	uint32_t debug;
 	uint32_t umask;
+	uint32_t pipeline;
 	struct p9_fid *root_fid;
 	struct p9_fid *cwd;
 	struct msk_trans_attr trans_attr;
@@ -204,8 +205,32 @@ ssize_t p9pz_write_wait(struct p9_handle *p9_handle, uint16_t tag);
 ssize_t p9p_write_send(struct p9_handle *p9_handle, struct p9_fid *fid, char *buf, size_t count, uint64_t offset, uint16_t *ptag);
 ssize_t p9p_write_wait(struct p9_handle *p9_handle, uint16_t tag);
 ssize_t p9pz_read_send(struct p9_handle *p9_handle, struct p9_fid *fid, size_t count, uint64_t offset, uint16_t *ptag);
-ssize_t p9pz_read_wait(struct p9_handle *p9_handle, char **zbuf, msk_data_t **pdata, uint16_t tag);
+ssize_t p9pz_read_wait(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag);
 
+static inline uint32_t p9p_write_len(struct p9_handle *p9_handle, uint32_t count) {
+	if (count > p9_handle->msize - P9_ROOM_TWRITE)
+		count = p9_handle->msize - P9_ROOM_TWRITE;
+	/* align IO if possible */
+	if (count > 1024*1024 && count < 1025*1024)
+		count = 1024*1024;
+	return count;
+}
 
+static inline uint32_t p9p_read_len(struct p9_handle *p9_handle, uint32_t count) {
+	if (count > p9_handle->msize - P9_ROOM_RREAD)
+		count = p9_handle->msize - P9_ROOM_RREAD;
+	/* align IO if possible */
+	if (count > 1024*1024 && count < 1025*1024)
+		count = 1024*1024;
+	return count;
+}
+
+// 9p_libc.c
+
+struct p9_pipeline {
+	uint16_t tag;
+	msk_data_t data;
+	uint64_t offset;
+};
 
 #endif

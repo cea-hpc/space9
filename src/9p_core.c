@@ -245,6 +245,8 @@ int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag) 
 		return p9c_getreply(p9_handle, pdata, tag);
 	}
 
+	INFO_LOG(p9_handle->debug & P9_DEBUG_RECV, "ack reply for tag %u", tag);
+
 	pthread_mutex_lock(&p9_handle->wdata_lock);
 	clear_bit(p9_handle->wdata_bitmap, p9_handle->tags[tag].wdata_i);
 	pthread_cond_signal(&p9_handle->wdata_cond);

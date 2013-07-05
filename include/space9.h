@@ -229,6 +229,93 @@ typedef int (*p9p_readdir_cb) (void *arg, struct p9_handle *p9_handle, struct p9
 int p9_init(struct p9_handle **pp9_handle, char *conf_file);
 void p9_destroy(struct p9_handle **pp9_handle);
 
+
+/**
+ * @}
+ * @defgroup core core functions - you probably don't want to use these
+ * @{
+ */
+
+/**
+ * @brief reconnects to the server. tries at exponential intervals
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @return 0 on success, errno value on error
+ */
+int p9c_reconnect(struct p9_handle *p9_handle);
+
+/**
+ * @brief Get a buffer to fill that will be ok to send directly
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[out]    pdata:	filled with appropriate buffer
+ * @param[out]    ptag:		available tag to use in the reply. If set to P9_NOTAG, this is taken instead.
+ * @return 0 on success, errno value on error
+ */
+int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag);
+
+/**
+ * @brief Send a buffer obtained through getbuffer
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     data:		buffer to send
+ * @param[in]     tag:		tag to use
+ * @return 0 on success, errno value on error
+ */
+int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
+
+/**
+ * @brief Put the buffer back in the list of available buffers for use
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     data:		buffer to put back
+ * @param[in]     tag:		tag to put back
+ * @return 0 on success, errno value on error
+ */
+int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
+
+
+/**
+ * @brief Waits for a reply with a given tag to arrive
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[out]    pdata:	filled with appropriate buffer
+ * @param[in]     tag:		tag to wait for
+ * @return 0 on success, errno value on error
+ */
+int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag);
+
+/**
+ * @brief Signal we're done with the buffer and it can be used again
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     data:		buffer to reuse
+ * @return 0 on success, errno value on error
+ */
+int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
+
+/**
+ * @brief Get a fid structure ready to be used
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[out]    pfid:		fid to be filled
+ * @return 0 on success, errno value on error
+ */
+int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
+
+/**
+ * @brief Release a fid after clunk
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     pfid:		fid to release
+ * @return 0 on success, errno value on error
+ */
+int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
+
+int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data);
+int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data);
+
+
 /**
  * @}
  * @defgroup proto low level protocol functions
@@ -321,21 +408,25 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 /**
  * @brief zero-copy read from a file.
  * Even if count is > msize, more won't be received
- * There MUST be a finalize call to p9c_putreply(p9_handle, data) on success
+ * There MUST be a finalize call to p9pz_read_put(p9_handle, data) on success
  *
  * size[4] Tread tag[2] fid[4] offset[8] count[4]
  * size[4] Rread tag[2] count[4] data[count]
  *
  * @param[in]     p9_handle:	connection handle
  * @param[in]     fid:		fid to use
- * @param[out]    zbuf:		data pointer here
  * @param[in]     count:	count of bytes to read
  * @param[in]     offset:	offset from which to read
  * @param[out]    pdata:	data to putreply
  * @return number of bytes read if >= 0, -errno on error.
  *          0 indicates eof?
  */
-ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid, char **zbuf, size_t count, uint64_t offset, msk_data_t **pdata);
+ssize_t p9pz_read(struct p9_handle *p9_handle, struct p9_fid *fid,  size_t count, uint64_t offset, msk_data_t **pdata);
+
+static inline int p9pz_read_put(struct p9_handle *p9_handle, msk_data_t *data) {
+	data->data -= P9_ROOM_RREAD;
+	return p9c_putreply(p9_handle, data);
+}
 
 /**
  * @brief Read from a file.
@@ -536,10 +627,13 @@ int p9p_rename(struct p9_handle *p9_handle, struct p9_fid *fid, struct p9_fid *d
  * @param[in]     p9_handle:	connection handle
  * @param[in]     fid:		fid of the link
  * @param[out]    ztarget:	content of the link
- * @param[out]    pdata:	pointer to data we need to put back (p9c_putreply)
+ * @param[out]    pdata:	pointer to data we need to put back (p9pz_readlink_put)
  * @return read size if >=0 on success (it was truncated if return value > size argument), -errno value on error.
  */
 int p9pz_readlink(struct p9_handle *p9_handle, struct p9_fid *fid, char **ztarget, msk_data_t **pdata);
+
+#define p9pz_readlink_put(p9_handle, data) p9c_putreply(p9_handle, data)
+
 /**
  * @brief readlink.
  *
@@ -1173,92 +1267,6 @@ ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count);
  */
 ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 
-
-/**
- * @}
- * @defgroup core core functions - you probably don't want to use these
- * @{
- */
-
-
-/**
- * @brief reconnects to the server. tries at exponential intervals
- *
- * @param[in]     p9_handle:	connection handle
- * @return 0 on success, errno value on error
- */
-int p9c_reconnect(struct p9_handle *p9_handle);
-
-/**
- * @brief Get a buffer to fill that will be ok to send directly
- *
- * @param[in]     p9_handle:	connection handle
- * @param[out]    pdata:	filled with appropriate buffer
- * @param[out]    ptag:		available tag to use in the reply. If set to P9_NOTAG, this is taken instead.
- * @return 0 on success, errno value on error
- */
-int p9c_getbuffer(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t *ptag);
-
-/**
- * @brief Send a buffer obtained through getbuffer
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     data:		buffer to send
- * @param[in]     tag:		tag to use
- * @return 0 on success, errno value on error
- */
-int p9c_sendrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
-
-/**
- * @brief Put the buffer back in the list of available buffers for use
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     data:		buffer to put back
- * @param[in]     tag:		tag to put back
- * @return 0 on success, errno value on error
- */
-int p9c_abortrequest(struct p9_handle *p9_handle, msk_data_t *data, uint16_t tag);
-
-
-/**
- * @brief Waits for a reply with a given tag to arrive
- *
- * @param[in]     p9_handle:	connection handle
- * @param[out]    pdata:	filled with appropriate buffer
- * @param[in]     tag:		tag to wait for
- * @return 0 on success, errno value on error
- */
-int p9c_getreply(struct p9_handle *p9_handle, msk_data_t **pdata, uint16_t tag);
-
-/**
- * @brief Signal we're done with the buffer and it can be used again
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     data:		buffer to reuse
- * @return 0 on success, errno value on error
- */
-int p9c_putreply(struct p9_handle *p9_handle, msk_data_t *data);
-
-/**
- * @brief Get a fid structure ready to be used
- *
- * @param[in]     p9_handle:	connection handle
- * @param[out]    pfid:		fid to be filled
- * @return 0 on success, errno value on error
- */
-int p9c_getfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
-
-/**
- * @brief Release a fid after clunk
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     pfid:		fid to release
- * @return 0 on success, errno value on error
- */
-int p9c_putfid(struct p9_handle *p9_handle, struct p9_fid **pfid);
-
-int p9c_reg_mr(struct p9_handle *p9_handle, msk_data_t *data);
-int p9c_dereg_mr(struct p9_handle *p9_handle, msk_data_t *data);
 
 /**
  * @}
