@@ -289,7 +289,7 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 			p9_handle->rdmabuf = NULL;
 		}
 		if (p9_handle->trans) {
-			msk_destroy_trans(&p9_handle->trans);
+			p9_handle->net_ops->destroy_trans(&p9_handle->trans);
 		}
 		free(p9_handle);
 		*pp9_handle = NULL;

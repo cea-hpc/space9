@@ -64,7 +64,7 @@ AC_ARG_ENABLE(mooshika,
 
 if test "x$enable_mooshika" != "xno" ; then
 	# Check for mooshika lib and header
-	AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR(missing mooshika headers, if on purpose use --disable-mooshika)])
+	AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR([missing mooshika headers, if on purpose use --disable-mooshika])])
 	AC_SEARCH_LIBS([msk_init], [mooshika], [enable_moosika=yes; AC_DEFINE([HAVE_MOOSHIKA], [1], [Defined to use mooshika])], [
 		AC_MSG_ERROR([unable to find mooshika, if on purpose use --disable-mooshika])
 	])
