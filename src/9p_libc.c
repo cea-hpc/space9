@@ -647,10 +647,16 @@ int p9l_fseek(struct p9_fid *fid, int64_t offset, int whence) {
 	return rc;
 }
 
+struct p9_wrpipe {
+	uint16_t tag;
+	msk_data_t data;
+	uint64_t offset;
+};
+
 ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
-	ssize_t rc;
+	ssize_t rc = 0;
 	size_t sent = 0, subsize;
-	struct p9_pipeline *pipeline;
+	struct p9_wrpipe *pipeline;
 	int tag_first, tag_last;
 	const uint32_t n_pipeline = fid->p9_handle->pipeline;
 	const uint32_t chunksize = p9p_write_len(fid->p9_handle, count);
@@ -668,7 +674,10 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 			sent += rc;
 		} while (sent < count);
 	} else { /* register the whole buffer and send it */
-		pipeline = malloc(fid->p9_handle->pipeline * sizeof(struct p9_pipeline));
+		pipeline = malloc(fid->p9_handle->pipeline * sizeof(struct p9_wrpipe));
+		if (!pipeline) {
+			rc = -ENOMEM;
+		}
 		pipeline[0].data.data = buffer;
 		pipeline[0].data.size = count;
 		pipeline[0].data.max_size = count;
@@ -681,7 +690,7 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 
 		tag_first = 1 - fid->p9_handle->pipeline;
 		tag_last = 0;
-		do {
+		while (rc >= 0) {
 			if (count - sent < chunksize)
 				pipeline[tag_last % n_pipeline].data.size = count - sent;
 
@@ -690,7 +699,7 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 			rc = p9pz_write_send(fid->p9_handle, fid, &pipeline[tag_last % n_pipeline].data, fid->offset + sent, &pipeline[tag_last % n_pipeline].tag);
 			if (rc < 0)
 				break;
-			sent += chunksize;
+			sent += pipeline[tag_last % n_pipeline].data.size;
 			tag_last++;
 			if (sent >= count)
 				break;
@@ -713,7 +722,7 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 				}
 			}
 			tag_first++;
-		} while (count > sent);
+		}
 		/** FIXME wait for writes even if rc < 0, keep rc for return value - first one matters */
 		while (rc >= 0 && tag_first < tag_last) {
 			rc = p9pz_write_wait(fid->p9_handle, pipeline[tag_first % n_pipeline].tag);
@@ -736,6 +745,7 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 		}
 
 		p9c_dereg_mr(fid->p9_handle, &pipeline[0].data);
+		free(pipeline);
 		fid->offset += sent;
 	}
 	if (rc < 0) {
@@ -768,26 +778,101 @@ ssize_t p9l_writev(struct p9_fid *fid, struct iovec *iov, int iovcnt) {
 	return rc;
 }
 
+struct p9_rdpipe {
+	uint16_t tag;
+	uint32_t size;
+	uint64_t offset;
+	char       *buf;
+	msk_data_t *data;
+};
+
+
 ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count) {
-	ssize_t rc, total = 0;
+	ssize_t rc = 0;
+	size_t total = 0, subsize;
+	struct p9_rdpipe *pipeline;
+	int tag_first, tag_last;
+	const uint32_t n_pipeline = fid->p9_handle->pipeline;
+	const uint32_t chunksize = p9p_read_len(fid->p9_handle, count);
 
 	/* sanity checks */
 	if (fid == NULL || buffer == NULL || (fid->openflags & RDFLAG) == 0 )
 		return -EINVAL;
 
+	pipeline = malloc(fid->p9_handle->pipeline * sizeof(struct p9_rdpipe));
+
+	for (tag_first = 0; tag_first < fid->p9_handle->pipeline; tag_first++) {
+		pipeline[tag_first].size = chunksize;
+	}
+
+	tag_first = 1 - fid->p9_handle->pipeline;
+	tag_last = 0;
 	do {
-		rc = p9p_read(fid->p9_handle, fid, buffer + total, count - total, fid->offset);
-		if (rc <= 0)
+		if (count - total < chunksize)
+			pipeline[tag_last % n_pipeline].size = count - total;
+
+		pipeline[tag_last % n_pipeline].buf = buffer + total;
+		pipeline[tag_last % n_pipeline].offset = fid->offset + total;
+		rc = p9pz_read_send(fid->p9_handle, fid, pipeline[tag_last % n_pipeline].size, fid->offset + total, &pipeline[tag_last % n_pipeline].tag);
+		if (rc < 0)
 			break;
-		fid->offset += rc;
-		total += rc;
-	} while (total < count);
+		total += pipeline[tag_last % n_pipeline].size;
+		tag_last++;
+		if (total >= count)
+			break;
+		if (tag_first >= 0) {
+			rc = p9pz_read_wait(fid->p9_handle, &pipeline[tag_first % n_pipeline].data, pipeline[tag_first % n_pipeline].tag);
+			if (rc < 0) {
+				INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed: %s (%zd)\n", strerror(-rc), -rc);
+				break;
+			}
+			memcpy(pipeline[tag_first % n_pipeline].buf, pipeline[tag_first % n_pipeline].data->data, rc);
+			p9pz_read_put(fid->p9_handle, pipeline[tag_first % n_pipeline].data);
+			if (rc != pipeline[tag_first % n_pipeline].size) {
+				INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "not a full read!!! read %zu, expected %u\n", rc, pipeline[tag_first % n_pipeline].size);
+				/* fall back to regular read /!\ NEEDS TESTING /!\ */
+				subsize = rc;
+				while (subsize < pipeline[tag_first % n_pipeline].size) {
+					rc = p9p_read(fid->p9_handle, fid, pipeline[tag_first % n_pipeline].buf + subsize, pipeline[tag_first % n_pipeline].size - subsize, pipeline[tag_first % n_pipeline].offset + subsize);
+					if (rc < 0)
+						break;
+					subsize += rc;
+				}
+			}
+		}
+		tag_first++;
+	} while (count > total);
+	/** FIXME wait for writes even if rc < 0, keep rc for return value - first one matters */
+	while (rc >= 0 && tag_first < tag_last) {
+		rc = p9pz_read_wait(fid->p9_handle, &pipeline[tag_first % n_pipeline].data, pipeline[tag_first % n_pipeline].tag);
+		if (rc < 0) {
+			INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "write failed: %s (%zd)\n", strerror(-rc), -rc);
+			break;
+		}
+		memcpy(pipeline[tag_first % n_pipeline].buf, pipeline[tag_first % n_pipeline].data->data, rc);
+		p9pz_read_put(fid->p9_handle, pipeline[tag_first % n_pipeline].data);
+		if (rc != pipeline[tag_first % n_pipeline].size) {
+			INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "not a full read!!! read %zu, expected %u\n", rc, pipeline[tag_first % n_pipeline].size);
+			/* fall back to regular read /!\ NEEDS TESTING /!\ */
+			subsize = rc;
+			while (subsize < pipeline[tag_first % n_pipeline].size) {
+				rc = p9p_read(fid->p9_handle, fid, pipeline[tag_first % n_pipeline].buf + subsize, pipeline[tag_first % n_pipeline].size - subsize, pipeline[tag_first % n_pipeline].offset + subsize);
+				if (rc < 0)
+					break;
+				subsize += rc;
+			}
+		}
+		tag_first++;
+	}
 
 	if (rc < 0) {
 		INFO_LOG(fid->p9_handle->debug & P9_DEBUG_LIBC, "read failed on file %s at offset %"PRIu64", error: %s (%zu)", fid->path, fid->offset, strerror(-rc), -rc);
 	} else {
+		fid->offset += total;
 		rc = total;
 	}
+
+	free(pipeline);
 
 	return rc;
 }

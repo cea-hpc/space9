@@ -225,12 +225,5 @@ static inline uint32_t p9p_read_len(struct p9_handle *p9_handle, uint32_t count)
 	return count;
 }
 
-// 9p_libc.c
-
-struct p9_pipeline {
-	uint16_t tag;
-	msk_data_t data;
-	uint64_t offset;
-};
 
 #endif
