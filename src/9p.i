@@ -334,13 +334,12 @@ mode is file mode if created, umask is applied") open;
 	PyObject *fread(struct p9_fid *fid, size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
-		char *zbuf;
 		msk_data_t *data;
 
-		rc = p9pz_read($self, fid, &zbuf, count, fid->offset, &data);
+		rc = p9pz_read($self, fid, count, fid->offset, &data);
 
 		if (rc >= 0) {
-			pystr = PyString_FromStringAndSize(zbuf, MIN(count, rc));
+			pystr = PyString_FromStringAndSize((char*)data->data, MIN(count, rc));
 			p9c_putreply($self, data);
 			fid->offset += rc;
 		} else {
@@ -446,13 +445,12 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 	PyObject *read(size_t count) {
 		int rc;
 		PyObject *pystr = NULL;
-		char *zbuf;
 		msk_data_t *data;
 
-		rc = p9pz_read($self->ptr->p9_handle, $self->ptr, &zbuf, count, $self->ptr->offset, &data);
+		rc = p9pz_read($self->ptr->p9_handle, $self->ptr, count, $self->ptr->offset, &data);
 
 		if (rc >= 0) {
-			pystr = PyString_FromStringAndSize(zbuf, MIN(count, rc));
+			pystr = PyString_FromStringAndSize((char*)data->data, MIN(count, rc));
 			p9c_putreply($self->ptr->p9_handle, data);
 			$self->ptr->offset += rc;
 		} else {
