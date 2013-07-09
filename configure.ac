@@ -59,14 +59,18 @@ AM_CONDITIONAL(ENABLE_READLINE, test "x$have_readline" == "x1")
 
 
 #don't add -lmooshika if tcp emulation is used
-AC_ARG_ENABLE(mooshika,
-	AC_HELP_STRING([--disable-mooshika], [don't use mooshika]))
+AC_ARG_WITH(mooshika,
+	AC_HELP_STRING([--without-mooshika], [don't use mooshika]))
 
-if test "x$enable_mooshika" != "xno" ; then
+if test "x$with_mooshika" != "xno" ; then
 	# Check for mooshika lib and header
-	AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR([missing mooshika headers, if on purpose use --disable-mooshika])])
+	if test "x$with_mooshika" != "x" ; then
+		LIBS="-L$with_mooshika/lib $LIBS"
+		CFLAGS="-I$with_mooshika/include $CFLAGS"
+	fi
+	AC_CHECK_HEADERS([mooshika.h],[], [AC_MSG_ERROR([missing mooshika headers, if on purpose use --without-mooshika])])
 	AC_SEARCH_LIBS([msk_init], [mooshika], [enable_moosika=yes; AC_DEFINE([HAVE_MOOSHIKA], [1], [Defined to use mooshika])], [
-		AC_MSG_ERROR([unable to find mooshika, if on purpose use --disable-mooshika])
+		AC_MSG_ERROR([unable to find mooshika, if on purpose use --without-mooshika])
 	])
 fi
 
