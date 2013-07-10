@@ -456,15 +456,8 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 			} else {
 				memcpy(&newfid->qid, &fid->qid, sizeof(struct p9_qid));
 			}
-			strncpy(newfid->path, fid->path, fid->pathlen);
 			if (path && path[0] != '\0' && fid->pathlen < MAXPATHLEN-2) {
-				if (fid->path[fid->pathlen - 1] != '/') {
-					strncpy(newfid->path + fid->pathlen, "/", MAXPATHLEN - fid->pathlen);
-					strncpy(newfid->path + fid->pathlen + 1, path, MAXPATHLEN - fid->pathlen - 1);
-				} else {
-					strncpy(newfid->path + fid->pathlen, path, MAXPATHLEN - fid->pathlen);
-				}
-				newfid->path[MAXPATHLEN-1] = '\0';
+				snprintf(newfid->path, MAXPATHLEN, "%s/%s", fid->path, path);
 				newfid->pathlen = path_canonicalizer(newfid->path);
 			} else {
 				newfid->path[fid->pathlen] = '\0';
@@ -706,7 +699,7 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLCREATE:
-			strncat(fid->path, name, MAXPATHLEN - strlen(fid->path));
+			fid->pathlen += snprintf(fid->path+fid->pathlen, MAXPATHLEN-fid->pathlen, "%s", name);
 			if (flags & O_WRONLY)
 				fid->openflags = WRFLAG;
 			else if (flags & O_RDWR)
