@@ -65,6 +65,11 @@ struct msk_ctx {
 	void *callback_arg;
 };
 
+#define MSK_DEBUG_EVENT 0x0001
+#define MSK_DEBUG_SETUP 0x0002
+#define MSK_DEBUG_SEND 0x0004
+#define MSK_DEBUG_RECV 0x0008
+
 struct msk_tcp_trans {
 	int sockfd;
 	sockaddr_union_t peer_sa;
@@ -124,22 +129,22 @@ static inline int msk_tcp_create_thread(pthread_t *thrid, void *(*start_routine)
 
 	/* Init for thread parameter (mostly for scheduling) */
 	if ((ret = pthread_attr_init(&attr)) != 0) {
-		ERROR_LOG("can't init pthread's attributes: %s (%d)", strerror(ret), ret);
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "can't init pthread's attributes: %s (%d)", strerror(ret), ret);
 		return ret;
 	}
 
 	if ((ret = pthread_attr_setscope(&attr, PTHREAD_SCOPE_SYSTEM)) != 0) {
-		ERROR_LOG("can't set pthread's scope: %s (%d)", strerror(ret), ret);
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "can't set pthread's scope: %s (%d)", strerror(ret), ret);
 		return ret;
 	}
 
 	if ((ret = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE)) != 0) {
-		ERROR_LOG("can't set pthread's join state: %s (%d)", strerror(ret), ret);
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "can't set pthread's join state: %s (%d)", strerror(ret), ret);
 		return ret;
 	}
 
 	if ((ret = pthread_attr_setstacksize(&attr, THREAD_STACK_SIZE)) != 0) {
-		ERROR_LOG("can't set pthread's stack size: %s (%d)", strerror(ret), ret);
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "can't set pthread's stack size: %s (%d)", strerror(ret), ret);
 		return ret;
 	}
 
@@ -164,7 +169,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 					break;
 
 			if (i == trans->rq_depth) {
-				INFO_LOG(internals->debug, "Waiting for cond");
+				INFO_LOG(internals->debug & MSK_DEBUG_RECV, "Waiting for cond");
 				pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 			}
 
@@ -182,7 +187,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 		packet_size = *((uint32_t*)data->data);
 		read_size = packet_size;
 		if (packet_size > data->max_size) {
-			ERROR_LOG("packet bigger than data maxsize? (resp. %u and %u)", packet_size, data->max_size);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "packet bigger than data maxsize? (resp. %u and %u)", packet_size, data->max_size);
 			read_size = data->max_size;
 		}
 
@@ -192,14 +197,14 @@ static void *msk_tcp_recv_thread(void *arg) {
 				continue;
 			} else if (n < 0) {
 				rc = errno;
-				ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
+				INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "recv error! %s (%d)", strerror(rc), rc);
 				break;
 			}
 			data->size += n;
 		} while(data->size < read_size);
 
 		if (packet_size > read_size) {
-			ERROR_LOG("packet too big for buffer, throwing %u bytes out", packet_size - read_size);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "packet too big for buffer, throwing %u bytes out", packet_size - read_size);
 			read_size = packet_size - read_size;
 			junk = malloc(1024);
 			while (read_size > 0) {
@@ -208,7 +213,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 					continue;
 				} else if (n < 0) {
 					rc = errno;
-					ERROR_LOG("recv error! %s (%d)", strerror(rc), rc);
+					INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "recv error! %s (%d)", strerror(rc), rc);
 					break;
 				}
 				read_size -= n;
@@ -249,9 +254,13 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 		return EINVAL;
 	}
 
+	pthread_mutex_lock(&internals->lock);
+	internals->debug = attr->debug;
+	pthread_mutex_unlock(&internals->lock);
+
 	trans = malloc(sizeof(msk_trans_t));
 	if (!trans) {
-		ERROR_LOG("Out of memory");
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Out of memory");
 		return ENOMEM;
 	}
 
@@ -268,7 +277,7 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 		trans->state = MSK_INIT;
 
 		if (!attr->addr.sa_stor.ss_family) { //FIXME: do a proper check?
-			ERROR_LOG("address has to be defined");
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "address has to be defined");
 			ret = EDESTADDRREQ;
 			break;
 		}
@@ -284,34 +293,31 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 
 		ret = pthread_mutex_init(&trans->cm_lock, NULL);
 		if (ret) {
-			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 		ret = pthread_cond_init(&trans->cm_cond, NULL);
 		if (ret) {
-			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_cond_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 		ret = pthread_mutex_init(&trans->ctx_lock, NULL);
 		if (ret) {
-			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 		ret = pthread_cond_init(&trans->ctx_cond, NULL);
 		if (ret) {
-			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(ret), ret);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_cond_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 
 		ret = pthread_mutex_init(&tcpt(trans)->lock, NULL);
 		if (ret) {
-			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_mutex_init failed: %s (%d)", strerror(ret), ret);
 			break;
 		}
 
-		pthread_mutex_lock(&internals->lock);
-		internals->debug = attr->debug;
-		pthread_mutex_unlock(&internals->lock);
 	} while (0);
 
 	if (ret) {
@@ -332,21 +338,21 @@ int msk_tcp_bind_server(msk_trans_t *trans) {
 		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (tcpt(trans)->sockfd == -1) {
 			rc = errno;
-			ERROR_LOG("Socket creation failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Socket creation failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 
 		rc = bind(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
 		if (rc) {
 			rc = errno;
-			ERROR_LOG("bind failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "bind failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 
 		rc = listen(tcpt(trans)->sockfd, trans->server);
 		if (rc) {
 			rc = errno;
-			ERROR_LOG("listen failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "listen failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 	} while (0);
@@ -360,7 +366,7 @@ static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	int rc;
 
 	if (!trans || !tcpt) {
-		ERROR_LOG("malloc failed");
+		INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "malloc failed");
 		return NULL;
 	}
 
@@ -377,27 +383,27 @@ static msk_trans_t *clone_trans(msk_trans_t *listening_trans) {
 	do {
 		rc = msk_tcp_setup_buffers(trans);
 		if (rc) {
-			ERROR_LOG("Couldn't setup buffers");
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Couldn't setup buffers");
 			break;
 		}
 		rc = pthread_mutex_init(&trans->cm_lock, NULL);
 		if (rc) {
-			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 		rc = pthread_cond_init(&trans->cm_cond, NULL);
 			if (rc) {
-			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_cond_init failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 		rc = pthread_mutex_init(&trans->ctx_lock, NULL);
 		if (rc) {
-			ERROR_LOG("pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_mutex_init failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 		rc = pthread_cond_init(&trans->ctx_cond, NULL);
 		if (rc) {
-			ERROR_LOG("pthread_cond_init failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "pthread_cond_init failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 	} while (0);
@@ -452,20 +458,20 @@ int msk_tcp_connect(msk_trans_t *trans) {
 	do {
 		rc = msk_tcp_setup_buffers(trans);
 		if (rc) {
-			ERROR_LOG("Couldn't setup buffers");
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Couldn't setup buffers");
 			break;
 		}
 		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (tcpt(trans)->sockfd == -1) {
 			rc = errno;
-			ERROR_LOG("Socket creation failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Socket creation failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 
 		rc = connect(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
 		if (rc) {
 			rc = errno;
-			ERROR_LOG("Connect failed: %s (%d)", strerror(rc), rc);
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Connect failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
 	} while (0);
@@ -515,7 +521,7 @@ int msk_tcp_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_c
 				break;
 
 		if (i == trans->rq_depth) {
-			INFO_LOG(internals->debug, "Waiting for cond");
+			INFO_LOG(internals->debug & MSK_DEBUG_RECV, "Waiting for cond");
 			pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 		}
 
@@ -551,7 +557,7 @@ int msk_tcp_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, c
 				continue;
 			} else if (rc < 0) {
 				rc = errno;
-				ERROR_LOG("write failed: %s (%d)", strerror(rc), rc);
+				INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "write failed: %s (%d)", strerror(rc), rc);
 			} else {
 				cur += rc;
 				rc = 0;
@@ -573,7 +579,7 @@ int msk_tcp_post_n_send(msk_trans_t *trans, msk_data_t *data_arg, int num_sge, c
 }
 
 void msk_tcp_print_devinfo(msk_trans_t *trans) {
-	ERROR_LOG("Not implemented for TCP");
+	INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Not implemented for TCP");
 }
 
 struct sockaddr *msk_tcp_get_dst_addr(msk_trans_t *trans) {
