@@ -45,7 +45,7 @@ static int ls_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *fi
 }
 
 static int ll_callback(void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
-	int rc;
+	int rc = EINVAL;
 	struct p9_getattr attr;
 	char filetype;
 	char *target;
@@ -240,7 +240,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 	struct p9_fid *fid;
 	char *filename;
 	char *buf = NULL;
-	uint32_t count;
+	uint32_t count = 0;
 
 	fid = NULL;
 	filename = arg;

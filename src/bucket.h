@@ -66,6 +66,9 @@ static inline void bucket_destroy(bucket_t **pbucket) {
 }
 
 static inline void bucket_put(bucket_t *bucket, void **pitem) {
+	if (!pitem)
+		return;
+
 	pthread_mutex_lock(&bucket->lock);
 	if (bucket->count >= bucket->size) {
 		free(*pitem);
@@ -77,7 +80,7 @@ static inline void bucket_put(bucket_t *bucket, void **pitem) {
 			bucket->last = 0;
 	}
 	pthread_mutex_unlock(&bucket->lock);
-	*pitem = NULL;
+	memset(pitem, 0, sizeof(void*));
 }
 
 
