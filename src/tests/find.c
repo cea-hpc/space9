@@ -38,7 +38,7 @@
 #include "bucket.h"
 
 #define DEFAULT_THRNUM 10
-#define DEFAULT_STARTPOINT "sigmund"
+#define DEFAULT_STARTPOINT "bigtree"
 #define DEFAULT_CONFFILE "../sample.conf"
 
 char *startpoint = DEFAULT_STARTPOINT;

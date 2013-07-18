@@ -223,7 +223,7 @@ int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 }
 int p9s_mkdir(struct p9_handle *p9_handle, char *arg) {
 	int rc;
-	rc = p9l_mkdir(p9_handle, arg, 0666);
+	rc = p9l_mkdir(p9_handle->cwd, arg, 0666);
 	if (rc)
 		printf("mkdir %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 

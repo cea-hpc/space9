@@ -973,14 +973,14 @@ int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst);
 int p9l_rm(struct p9_handle *p9_handle, char *path);
 
 /**
- * @brief mkdir
+ * @brief mkdir by fid
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     fid:		directory fid where to create dir
  * @param[in]     path:		path of new dir
  * @param[in]     mode:		mode of new dir
  * @return 0 on success, errno value on error.
  */
-int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode);
+int p9l_mkdir(struct p9_fid *fid, char *path, uint32_t mode);
 
 /**
  * @brief link by path

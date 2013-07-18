@@ -181,9 +181,10 @@ int p9l_umask(struct p9_handle *p9_handle, uint32_t mask) {
 	return old_mask;
 }
 
-int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
+int p9l_mkdir(struct p9_fid *fid, char *path, uint32_t mode) {
+	struct p9_handle *p9_handle = fid->p9_handle;
 	char *canon_path, *dirname, *basename;
-	struct p9_fid *fid = NULL;
+	struct p9_fid *dfid = NULL;
 	int rc, relative;
 
 	/* sanity checks */
@@ -199,18 +200,24 @@ int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
 	relative = path_split(canon_path, &dirname, &basename);
 
 	if (dirname[0] != '\0') {
-		rc = p9l_rootwalk(p9_handle, dirname, &fid, 0);
+		rc = p9l_walk(p9_handle, (relative ? fid : p9_handle->root_fid), dirname, &dfid, 0);
 		if (!rc) {
-			rc = p9p_mkdir(p9_handle, fid, basename, mode & p9_handle->umask, 0, NULL);
-			p9l_clunk(&fid);
+			rc = p9p_mkdir(p9_handle, dfid, basename, (mode ? mode : 0666) & ~p9_handle->umask, 0, NULL);
+			p9l_clunk(&dfid);
 		}
 	} else {
-		rc = p9p_mkdir(p9_handle, (relative ? p9_handle->cwd : p9_handle->root_fid), basename, mode & p9_handle->umask, 0, NULL);
+		rc = p9p_mkdir(p9_handle, (relative ? fid : p9_handle->root_fid), basename, (mode ? mode : 0666) & ~p9_handle->umask, 0, NULL);
 	}
 
 	free(canon_path);
 	return rc;
 }
+
+
+/* static inline int p9l_mkdir(struct p9_handle *p9_handle, char *path, uint32_t mode) {
+	return p9l_mkdirat(p9_handle->cwd, path, mode);
+} */
+
 
 int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname) {
 	char *canon_path, *dirname, *basename;
@@ -509,12 +516,12 @@ int p9l_openat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, str
 				return EINVAL;
 			}
 
-			rc = p9p_walk(p9_handle, relative ? p9_handle->cwd : p9_handle->root_fid, dirname, &fid);
+			rc = p9p_walk(p9_handle, relative ? dfid : p9_handle->root_fid, dirname, &fid);
 			if (rc) {
 				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot walk into parent dir '%s', %s (%d)", dirname, strerror(rc), rc);
 				break;
 			}
-			rc = p9p_lcreate(p9_handle, fid, basename, flags, mode & p9_handle->umask, gid, NULL);
+			rc = p9p_lcreate(p9_handle, fid, basename, flags, (mode ? mode : 0666) & ~p9_handle->umask, gid, NULL);
 			if (rc) {
 				INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "cannot create file '%s' in '%s', %s (%d)", basename, dirname, strerror(rc), rc);
 				break;
