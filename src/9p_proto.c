@@ -460,7 +460,7 @@ int p9p_walk(struct p9_handle *p9_handle, struct p9_fid *fid, char *path, struct
 				snprintf(newfid->path, MAXPATHLEN, "%s/%s", fid->path, path);
 				newfid->pathlen = path_canonicalizer(newfid->path);
 			} else {
-				newfid->path[fid->pathlen] = '\0';
+				memcpy(newfid->path, fid->path, fid->pathlen+1);
 				newfid->pathlen = fid->pathlen;
 			}
 
