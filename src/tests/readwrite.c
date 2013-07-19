@@ -181,8 +181,6 @@ int main(int argc, char **argv) {
 	thrarg.basename = DEFAULT_FILENAME;
 	pipeline = 0;
 	conffile = DEFAULT_CONFFILE;
-	pthread_mutex_init(&thrarg.lock, NULL);
-	pthread_barrier_init(&thrarg.barrier, NULL, thrnum);
 
 	static struct option long_options[] = {
 		{ "conf",	required_argument,	0,		'c' },
@@ -260,6 +258,8 @@ int main(int argc, char **argv) {
 	}
 
 	thrid = malloc(sizeof(pthread_t)*thrnum);
+	pthread_mutex_init(&thrarg.lock, NULL);
+	pthread_barrier_init(&thrarg.barrier, NULL, thrnum);
 
         rc = p9_init(&thrarg.p9_handle, conffile);
         if (rc) {

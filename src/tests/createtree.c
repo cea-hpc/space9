@@ -162,8 +162,6 @@ int main(int argc, char **argv) {
 	thrarg.no_unlink = 0;
 	basename = DEFAULT_PREFIX;
 	conffile = DEFAULT_CONFFILE;
-	pthread_mutex_init(&thrarg.lock, NULL);
-	pthread_barrier_init(&thrarg.barrier, NULL, thrnum);
 
 	static struct option long_options[] = {
 		{ "conf",	required_argument,	0,		'c' },
@@ -245,6 +243,8 @@ int main(int argc, char **argv) {
 
 	thrid = malloc(sizeof(pthread_t)*thrnum);
 
+	pthread_mutex_init(&thrarg.lock, NULL);
+	pthread_barrier_init(&thrarg.barrier, NULL, thrnum + 1);
         rc = p9_init(&thrarg.p9_handle, conffile);
         if (rc) {
                 ERROR_LOG("Init failure: %s (%d)", strerror(rc), rc);
@@ -267,6 +267,14 @@ int main(int argc, char **argv) {
 
 	for (i=0; i<thrnum; i++)
 		pthread_create(&thrid[i], NULL, createtreethr, &thrarg);
+
+	pthread_barrier_wait(&thrarg.barrier);
+
+	printf("Starting %d create_trees with depth %d, dwidth %d, fwidth %d\n", thrnum, thrarg.depth, thrarg.dwidth, thrarg.fwidth);
+
+	pthread_barrier_wait(&thrarg.barrier);
+
+	printf("Starting unlinks\n");
 
 	for (i=0; i<thrnum; i++)
 		pthread_join(thrid[i], NULL);
