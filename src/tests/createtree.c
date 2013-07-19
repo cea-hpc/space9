@@ -39,126 +39,111 @@
 #include "settings.h"
 
 
-#define DEFAULT_THRNUM 1
+#define DEFAULT_THRNUM 3
 #define DEFAULT_PREFIX "bigtree"
-#define DEFAULT_WIDTH 64
-#define DEFAULT_DEPTH 3
+#define DEFAULT_DWIDTH 24
+#define DEFAULT_FWIDTH 64
+#define DEFAULT_DEPTH 2
 #define DEFAULT_CONFFILE "../sample.conf"
 
 struct thrarg {
 	struct p9_handle *p9_handle;
 	pthread_mutex_t lock;
 	pthread_barrier_t barrier;
-	struct timeval end;
-	uint32_t numdirs;
-	uint32_t numfiles;
+	struct timeval create;
+	struct timeval unlink;
+	uint64_t numcreate;
+	uint64_t numunlink;
 	uint32_t depth;
-	uint32_t width;
-	struct p9_fid *basefid;
+	uint32_t dwidth;
+	uint32_t fwidth;
+	uint32_t no_unlink;
 };
-
-static int create_tree(struct p9_fid *fid, int depth, int width) {
-	int rc = 0, i;
-	struct p9_handle *p9_handle = fid->p9_handle;
-	struct p9_fid *newfid;
-	char name[MAXNAMLEN];
-
-	if (depth > 0) {
-		for (i = 0; i < width; i++) {
-			snprintf(name, MAXNAMLEN, "dir.%i", i);
-			rc = p9l_mkdir(fid, name, 0);
-			if (rc && rc != EEXIST) {
-				printf("couldn't create directory %s in %s, error %s (%d)\n", name, fid->path, strerror(rc), rc);
-				break;
-			}
-
-			rc = p9l_walk(p9_handle, fid, name, &newfid, 0);
-			if (rc) {
-				printf("couldn't go to directory %s in %s, error: %s (%d)\n", name, fid->path, strerror(rc), rc);
-				break;
-			}
-			rc = create_tree(newfid, depth-1, width);
-			p9l_clunk(&newfid);
-			if (rc)
-				break;
-		}
-	} else {
-		for (i = 0; i < width; i++) {
-			snprintf(name, MAXNAMLEN, "file.%i", i);
-			rc = p9l_openat(p9_handle, fid, name, &newfid, O_CREAT | O_WRONLY, 0, 0);
-			p9l_clunk(&newfid);
-			if (rc) {
-				printf("couldn't create file %s in %s, error: %s (%d)\n", name, fid->path, strerror(rc), rc);
-				break;
-			}
-		}
-	}
-	
-	return rc;
-}
 
 static void *createtreethr(void* arg) {
 	struct thrarg *thrarg = arg;
 	struct p9_handle *p9_handle = thrarg->p9_handle;
 	struct p9_fid *fid;
-	struct timeval start, end;
-	int rc, tmprc;
+	struct timeval start, create, unlink;
+	int rc = 0;
+	ssize_t numcreate = 0, numunlink = 0;
 	char dirname[MAXNAMLEN];
 
 	do {
 		/* prepare, etc */
 		snprintf(dirname, MAXNAMLEN, "%lx", pthread_self());
 
-		rc = p9l_mkdir(thrarg->basefid, dirname, 0);
-		if (rc && rc != EEXIST) {
-			printf("couldn't create thread base directory %s in %s, error %s (%d)\n", dirname, thrarg->basefid->path, strerror(rc), rc);
-			break;
-		}
-
-		rc = p9l_walk(p9_handle, thrarg->basefid, dirname, &fid, 0);
-		if (rc) {
-			printf("couldn't go to thread base directory %s in %s, error: %s (%d)\n", dirname, thrarg->basefid->path, strerror(rc), rc);
-			break;
-		}
-
 		/* start creating! */
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
 
-		create_tree(fid, thrarg->depth, thrarg->width);
+		numcreate = p9l_createtree(p9_handle, dirname, thrarg->depth, thrarg->dwidth, thrarg->fwidth);
 
-		gettimeofday(&end, NULL);
-		end.tv_sec = end.tv_sec - start.tv_sec - (start.tv_usec > end.tv_usec ? 1 : 0);
-		end.tv_usec = (start.tv_usec > end.tv_usec ? 1000000 : 0 ) +  end.tv_usec - start.tv_usec;	} while (0);
+		if (numcreate < 0) {
+			rc = -numcreate;
+			break;
+		}
+
+		gettimeofday(&create, NULL);
+		create.tv_sec = create.tv_sec - start.tv_sec - (start.tv_usec > create.tv_usec ? 1 : 0);
+		create.tv_usec = (start.tv_usec > create.tv_usec ? 1000000 : 0 ) +  create.tv_usec - start.tv_usec;
+
+		if (thrarg->no_unlink)
+			break;
+
+		/* start removing! */
+		pthread_barrier_wait(&thrarg->barrier);
+		gettimeofday(&start, NULL);
+
+		numunlink = p9l_rmrf(p9_handle, dirname);
+
+		if (numunlink < 0) {
+			rc = -numunlink;
+			break;
+		}
+
+		gettimeofday(&unlink, NULL);
+		unlink.tv_sec = unlink.tv_sec - start.tv_sec - (start.tv_usec > unlink.tv_usec ? 1 : 0);
+		unlink.tv_usec = (start.tv_usec > unlink.tv_usec ? 1000000 : 0 ) +  unlink.tv_usec - start.tv_usec;
+	} while (0);
 
 	if (fid) {
-		tmprc = p9l_clunk(&fid);
-		if (tmprc) {
-			printf("clunk failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
+		rc = p9l_clunk(&fid);
+		if (rc) {
+			printf("clunk failed, rc: %s (%d)\n", strerror(rc), rc);
 		}
 	}
 
-	if (end.tv_usec || end.tv_sec)
-		printf("Created %d directories and %d files in %lu.%06lus - estimate speed: %lu entries/s\n", thrarg->numdirs, thrarg->numfiles, end.tv_sec, end.tv_usec, ((uint64_t)(thrarg->numdirs+thrarg->numfiles)*1000000)/(end.tv_sec*1000000+end.tv_usec));
+	if (rc == 0) {
+		if (create.tv_usec || create.tv_sec)
+			printf("Created %zd files/dirs in %lu.%06lus - estimate speed: %lu entries/s\n" ,numcreate, create.tv_sec, create.tv_usec, (numcreate*1000000)/(create.tv_sec*1000000+create.tv_usec));
+		if (unlink.tv_usec || unlink.tv_sec)
+			printf("Unlinked %zd files/dirs in %lu.%06lus - estimate speed: %lu entries/s\n" ,numunlink, unlink.tv_sec, unlink.tv_usec, (numunlink*1000000)/(unlink.tv_sec*1000000+unlink.tv_usec));
 
-	pthread_mutex_lock(&thrarg->lock);
-	thrarg->end.tv_sec += end.tv_sec;
-	thrarg->end.tv_usec += end.tv_usec;
-	pthread_mutex_unlock(&thrarg->lock);
-
-	if (rc)
-		printf("thread ended, rc=%d\n", rc);
+		pthread_mutex_lock(&thrarg->lock);
+		thrarg->numcreate += numcreate;
+		thrarg->create.tv_sec += create.tv_sec;
+		thrarg->create.tv_usec += create.tv_usec;
+		thrarg->numunlink += numunlink;
+		thrarg->unlink.tv_sec += unlink.tv_sec;
+		thrarg->unlink.tv_usec += unlink.tv_usec;
+		pthread_mutex_unlock(&thrarg->lock);
+	} else {
+		printf("thread failed, rc=%d\n", rc);
+	}
 
 	pthread_exit(NULL);	
 }
 
 static void print_help(char **argv) {
-	printf("Usage: %s [-c conf] [-w width] [-d depth] [-b base-dir] [-t thread-num]\n", argv[0]);
+	printf("Usage: %s [-c conf] [-W dir-width] [-w file-width] [-d depth] [-b base-dir] [-t thread-num]\n", argv[0]);
 	printf(	"Optional arguments:\n"
 		"	-t, --threads num: number of operating threads\n"
 		"	-c, --conf file: conf file to use\n"
-		"	-w, --width width: number of files/dirs per directory\n"
+		"	-W, --dir-width width: number of dirs per level\n"
+		"	-w, --file-width width: number of entries per level\n"
 		"	-d, --depth depth: depth of created tree (width dir per)\n"
+		"	-n, --no-unlink: don't remove the tree after creating it\n"
 		"	-b, --base basedir: base dir to use\n");
 }
 
@@ -172,7 +157,9 @@ int main(int argc, char **argv) {
 	thrnum = DEFAULT_THRNUM;
 	memset(&thrarg, 0, sizeof(struct thrarg));
 	thrarg.depth = DEFAULT_DEPTH;
-	thrarg.width = DEFAULT_WIDTH;
+	thrarg.dwidth = DEFAULT_DWIDTH;
+	thrarg.fwidth = DEFAULT_FWIDTH;
+	thrarg.no_unlink = 0;
 	basename = DEFAULT_PREFIX;
 	conffile = DEFAULT_CONFFILE;
 	pthread_mutex_init(&thrarg.lock, NULL);
@@ -182,16 +169,18 @@ int main(int argc, char **argv) {
 		{ "conf",	required_argument,	0,		'c' },
 		{ "help",	no_argument,		0,		'h' },
 		{ "threads",	required_argument,	0,		't' },
-		{ "width",	required_argument,	0,		'w' },
+		{ "dir-width",	required_argument,	0,		'W' },
+		{ "file-width",	required_argument,	0,		'w' },
 		{ "depth",	required_argument,	0,		'd' },
 		{ "base",	required_argument,	0,		'b' },
+		{ "no-unlink",	required_argument,	0,		'n' },
 		{ 0,		0,			0,		 0  }
 	};
 
 	int option_index = 0;
 	int op;
 
-	while ((op = getopt_long(argc, argv, "@c:ht:w:d:b:", long_options, &option_index)) != -1) {
+	while ((op = getopt_long(argc, argv, "@c:ht:W:w:d:b:n", long_options, &option_index)) != -1) {
 		switch(op) {
 			case '@':
 				printf("%s compiled on %s at %s\n", argv[0], __DATE__, __TIME__);
@@ -223,12 +212,22 @@ int main(int argc, char **argv) {
 					thrarg.depth = DEFAULT_DEPTH;
 				}
 				break;
-			case 'w':
-				thrarg.width = atoi(optarg);
-				if (thrarg.width == 0) {
-					printf("invalid width number %s, using default\n", optarg);
-					thrarg.width = DEFAULT_WIDTH;
+			case 'W':
+				thrarg.dwidth = atoi(optarg);
+				if (thrarg.dwidth == 0) {
+					printf("invalid dirwidth number %s, using default\n", optarg);
+					thrarg.dwidth = DEFAULT_DWIDTH;
 				}
+				break;
+			case 'w':
+				thrarg.fwidth = atoi(optarg);
+				if (thrarg.fwidth == 0) {
+					printf("invalid filewidth number %s, using default\n", optarg);
+					thrarg.fwidth = DEFAULT_FWIDTH;
+				}
+				break;
+			case 'n':
+				thrarg.no_unlink = 1;
 				break;
 			default:
 				ERROR_LOG("Failed to parse arguments");
@@ -258,16 +257,11 @@ int main(int argc, char **argv) {
 		return rc;
 	}
 
-	rc = p9l_walk(thrarg.p9_handle, thrarg.p9_handle->root_fid, basename, &thrarg.basefid, 0);
+	rc = p9l_cd(thrarg.p9_handle, basename);
 	if (rc) {
 		printf("couldn't go to base directory %s in /, error: %s (%d)\n", basename, strerror(rc), rc);
 		return rc;
 	}
-
-	thrarg.numfiles = pow(thrarg.width, thrarg.depth+1);
-	thrarg.numdirs = 0;
-	for (i = 1; i <= thrarg.depth; i++)
-		thrarg.numdirs += pow(thrarg.width, i);
 
         INFO_LOG(1, "Init success");
 
@@ -277,12 +271,28 @@ int main(int argc, char **argv) {
 	for (i=0; i<thrnum; i++)
 		pthread_join(thrid[i], NULL);
 
-	printf("Total stats:\n");
+	if (thrarg.create.tv_sec || thrarg.create.tv_usec) {
+		thrarg.create.tv_usec = (thrarg.create.tv_usec + (thrarg.create.tv_sec%thrnum)*1000000)/thrnum;
+		thrarg.create.tv_sec = thrarg.create.tv_sec/thrnum;
+		if (thrarg.create.tv_usec > 1000000) {
+			thrarg.create.tv_usec -= 1000000;
+			thrarg.create.tv_sec += 1;
+		}
 
+		printf("Total stats:\n");
+		printf("Created %zd files/dirs in %lu.%06lus - estimate speed: %lu entries/s\n", thrarg.numcreate, thrarg.create.tv_sec, thrarg.create.tv_usec, (thrarg.numcreate*1000000)/((thrarg.create.tv_sec*1000000+thrarg.create.tv_usec)));
+	}
 
-	if (thrarg.end.tv_sec || thrarg.end.tv_usec)
-		printf("Created %d directories and %d files in %lu.%06lus - estimate speed: %lu entries/s\n", thrarg.numdirs*thrnum, thrarg.numfiles*thrnum, thrarg.end.tv_sec/thrnum, (thrarg.end.tv_sec % thrnum)*1000000/thrnum + thrarg.end.tv_usec, ((uint64_t)(thrarg.numdirs+thrarg.numfiles)*thrnum*1000000)/((thrarg.end.tv_sec*1000000+thrarg.end.tv_usec)/thrnum));
+	if (thrarg.unlink.tv_sec || thrarg.unlink.tv_usec) {
+		thrarg.unlink.tv_usec = (thrarg.unlink.tv_usec + (thrarg.unlink.tv_sec%thrnum)*1000000)/thrnum;
+		thrarg.unlink.tv_sec = thrarg.unlink.tv_sec/thrnum;
+		if (thrarg.unlink.tv_usec > 1000000) {
+			thrarg.unlink.tv_usec -= 1000000;
+			thrarg.unlink.tv_sec += 1;
+		}
 
+		printf("Unlinked %zd files/dirs in %lu.%06lus - estimate speed: %lu entries/s\n", thrarg.numunlink, thrarg.unlink.tv_sec, thrarg.unlink.tv_usec, (thrarg.numunlink*1000000)/((thrarg.unlink.tv_sec*1000000+thrarg.unlink.tv_usec)));
+	}
 
 	pthread_mutex_destroy(&thrarg.lock);
 	pthread_barrier_destroy(&thrarg.barrier);

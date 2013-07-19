@@ -280,10 +280,24 @@ int main(int argc, char **argv) {
 
 	printf("Total stats:\n");
 
-	if (thrarg.write.tv_sec || thrarg.write.tv_usec)
-		printf("Wrote %"PRIu64"MB in %lu.%06lus - estimate speed: %luMB/s\n", thrnum*thrarg.totalsize/1024/1024, thrarg.write.tv_sec/thrnum, (thrarg.write.tv_sec % thrnum)*1000000/thrnum + thrarg.write.tv_usec/thrnum, thrnum*thrarg.totalsize/((thrarg.write.tv_sec*1000000+thrarg.write.tv_usec)/thrnum));
-	if (thrarg.read.tv_sec || thrarg.read.tv_usec)
-		printf("Read  %"PRIu64"MB in %lu.%06lus - estimate speed: %luMB/s\n", thrnum*thrarg.totalsize/1024/1024, thrarg.read.tv_sec/thrnum, (thrarg.read.tv_sec % thrnum)*1000000/thrnum + thrarg.read.tv_usec/thrnum, thrnum*thrarg.totalsize/((thrarg.read.tv_sec*1000000+thrarg.read.tv_usec)/thrnum)*1000*1000/1024/1024);
+	if (thrarg.write.tv_sec || thrarg.write.tv_usec) {
+		thrarg.write.tv_usec = (thrarg.write.tv_usec + (thrarg.write.tv_sec%thrnum)*1000000)/thrnum;
+		thrarg.write.tv_sec = thrarg.write.tv_sec/thrnum;
+		if (thrarg.write.tv_usec > 1000000) {
+			thrarg.write.tv_usec -= 1000000;
+			thrarg.write.tv_sec += 1;
+		}
+		printf("Wrote %"PRIu64"MB in %lu.%06lus - estimate speed: %luMB/s\n", thrnum*thrarg.totalsize/1024/1024, thrarg.write.tv_sec, thrarg.write.tv_usec, thrnum*thrarg.totalsize/(thrarg.write.tv_sec*1000000+thrarg.write.tv_usec));
+	}
+	if (thrarg.read.tv_sec || thrarg.read.tv_usec) {
+		thrarg.read.tv_usec = (thrarg.read.tv_usec + (thrarg.read.tv_sec%thrnum)*1000000)/thrnum;
+		thrarg.read.tv_sec = thrarg.read.tv_sec/thrnum;
+		if (thrarg.read.tv_usec > 1000000) {
+			thrarg.read.tv_usec -= 1000000;
+			thrarg.read.tv_sec += 1;
+		}
+		printf("Read  %"PRIu64"MB in %lu.%06lus - estimate speed: %luMB/s\n", thrnum*thrarg.totalsize/1024/1024, thrarg.read.tv_sec, thrarg.read.tv_usec, thrnum*thrarg.totalsize/(thrarg.read.tv_sec*1000000+thrarg.read.tv_usec)*1000*1000/1024/1024);
+	}
 
 	pthread_mutex_destroy(&thrarg.lock);
 	pthread_barrier_destroy(&thrarg.barrier);

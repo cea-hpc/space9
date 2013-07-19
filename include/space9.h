@@ -1270,6 +1270,33 @@ ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 
 /**
  * @}
+ * @defgroup still libc but really more like utils
+ * @{
+ */
+
+/**
+ * @brief create a large tree
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     path:		base of the tree
+ * @param[in]     depth:	depth of the tree
+ * @param[in]     dwidth:	number of dirs per level
+ * @param[in]     fwidth:	number of entries per level - fill up with empty files.
+ * @return number of entries (dir+files) created on success, -errno value on error
+ */
+ssize_t p9l_createtree(struct p9_handle *p9_handle, char *name, int depth, int dwidth, int fwidth);
+
+/**
+ * @brief rm -rf
+ *
+ * @param[in]     p9_handle:	connection handle
+ * @param[in]     path:		base of the tree
+ * @return number of entries (dir+files) removed on success, -errno value on error
+ */
+ssize_t p9l_rmrf(struct p9_handle *p9_handle, char *path);
+
+/**
+ * @}
  * @defgroup shell shell functions - not used nor really useful, but keeping it around for now
  * @{
  */

@@ -1065,3 +1065,203 @@ ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, 
 
 	return rc;
 };
+
+
+static ssize_t p9l_createtree_fid(struct p9_fid *fid, int depth, int dwidth, int fwidth) {
+	ssize_t nentries = 0, rc;
+	int i;
+	struct p9_handle *p9_handle = fid->p9_handle;
+	struct p9_fid *newfid;
+	char name[MAXNAMLEN];
+
+	if (depth > 0) {
+		for (i = 0; i < dwidth; i++) {
+			snprintf(name, MAXNAMLEN, "dir.%i", i);
+			rc = p9l_mkdir(fid, name, 0);
+			if (rc && rc != EEXIST) {
+				printf("couldn't create directory %s in %s, error %s (%zd)\n", name, fid->path, strerror(rc), rc);
+				break;
+			} else if (rc == 0) {
+				nentries++;
+			}
+
+			rc = p9l_walk(p9_handle, fid, name, &newfid, 0);
+			if (rc) {
+				printf("couldn't go to directory %s in %s, error: %s (%zd)\n", name, fid->path, strerror(rc), rc);
+				break;
+			}
+			rc = p9l_createtree_fid(newfid, depth-1, dwidth, fwidth);
+			p9l_clunk(&newfid);
+			if (rc < 0) {
+				nentries = -rc;
+				break;
+			}
+			nentries += rc;
+		}
+		fwidth -= dwidth;
+	}
+	for (i = 0; i < fwidth; i++) {
+		snprintf(name, MAXNAMLEN, "file.%i", i);
+		rc = p9l_openat(p9_handle, fid, name, &newfid, O_CREAT | O_WRONLY, 0, 0);
+		p9l_clunk(&newfid);
+		if (rc && rc != EEXIST) {
+			printf("couldn't create file %s in %s, error: %s (%zd)\n", name, fid->path, strerror(rc), rc);
+			break;
+		}
+	}
+	nentries += i;
+
+	return nentries;
+}
+
+ssize_t p9l_createtree(struct p9_handle *p9_handle, char *path, int depth, int dwidth, int fwidth) {
+	ssize_t rc;
+	struct p9_fid *fid = NULL;
+	int n = 0;
+
+	rc = p9l_mkdir(p9_handle->cwd, path, 0);
+	if (rc && rc != EEXIST) {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "couldn't create base directory %s in %s, error %s (%zd)", path, p9_handle->cwd->path, strerror(rc), rc);
+		return -rc;
+	} else {
+		n = 1;
+	}
+
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
+	if (rc) {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "couldn't walk to base directory %s in %s, error %s (%zd)", path, p9_handle->cwd->path, strerror(rc), rc);
+		return -rc;
+	}
+
+	rc = p9l_createtree_fid(fid, depth, dwidth, fwidth);
+
+	p9l_clunk(&fid);
+
+	/* add 1 if we created the base dir */
+	return (rc < 0 ? rc : rc + n);
+}
+
+
+/* rm -rf */
+
+struct nlist {
+	char name[MAXNAMLEN];
+	struct p9_fid *pfid;
+	struct nlist *next;
+};
+
+struct cb_arg {
+	int debug;
+	ssize_t count;
+	bucket_t *buck;
+	struct nlist *tail;
+};
+
+static int rd_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, struct p9_qid *qid, uint8_t type, uint16_t namelen, char *name) {
+	struct cb_arg *cb_arg = arg;
+	struct nlist *n;
+
+	/* skip . and .. */
+	if (strncmp(name, ".", namelen) == 0 || strncmp(name, "..", namelen) == 0)
+		return 0;
+
+	if (cb_arg->debug)
+		printf("%.*s\n", namelen, name);
+
+	if (qid->type == P9_QTDIR) {
+		n = bucket_get(cb_arg->buck);
+		if (n == NULL)
+			return ENOMEM;
+
+		strncpy(n->name, name, MIN(MAXNAMLEN, namelen));
+		if (namelen < MAXNAMLEN) {
+			n->name[namelen] = '\0';
+		} else {
+			n->name[MAXNAMLEN-1] = '\0';
+		}
+		n->pfid = dfid;
+
+		n->next = cb_arg->tail;
+		cb_arg->tail = n;
+	} else {
+		p9p_unlinkat(p9_handle, dfid, name, 0);
+		cb_arg->count++;
+	}
+
+	return 0;
+}
+
+
+ssize_t p9l_rmrf(struct p9_handle *p9_handle, char *path) {
+	struct p9_fid *fid;
+	int rc;
+	uint64_t offset;
+	bucket_t *buck;
+	struct cb_arg cb_arg;
+	struct nlist *nlist;
+
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
+	if (rc) {
+		INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "couldn't walk to base directory %s in %s, error %s (%d)", path, p9_handle->cwd->path, strerror(rc), rc);
+		return rc;
+	}
+
+	buck = bucket_init(100, sizeof(struct nlist));
+	cb_arg.buck = buck;
+	cb_arg.count = 0;
+	cb_arg.debug = p9_handle->debug & 0x100;
+	cb_arg.tail = bucket_get(buck);
+	strncpy(cb_arg.tail->name, path, MAXNAMLEN);
+	cb_arg.tail->next = NULL;
+	cb_arg.tail->pfid = p9_handle->cwd;
+
+	while (rc == 0 && cb_arg.tail != NULL) {
+		if (cb_arg.tail->name[0] == '\0') {
+			fid = cb_arg.tail->pfid;
+		} else {
+			rc = p9l_walk(p9_handle, cb_arg.tail->pfid, cb_arg.tail->name, &fid, AT_SYMLINK_NOFOLLOW);
+			if (rc) {
+				printf("walk failed, rc: %s (%d)\n", strerror(rc), rc);
+				break;
+			}
+
+			if (fid->qid.type != P9_QTDIR) {
+				printf("%s not a directory?", fid->path);
+				break;
+			}
+
+			rc = p9p_lopen(p9_handle, fid, O_RDONLY, NULL);
+			if (rc) {
+				printf("open failed, rc: %s (%d)\n", strerror(rc), rc);
+				break;
+			}
+
+			cb_arg.tail->name[0] = '\0';
+			cb_arg.tail->pfid = fid;
+		}
+
+		offset = 0LL;
+		rc = p9p_readdir(p9_handle, fid, &offset, rd_cb, &cb_arg);
+
+		if (rc == 2) {
+			rc = 0;
+			p9l_rm(p9_handle, fid->path);
+			cb_arg.count++;
+			p9p_clunk(p9_handle, &fid);
+			nlist = cb_arg.tail;
+			cb_arg.tail = cb_arg.tail->next;
+			bucket_put(buck, (void **)&nlist);
+		} else if (rc > 0) {
+			rc = 0;
+		} else if (rc < 0) {
+			rc = -rc;
+			printf("readdir failed, rc: %s (%d)\n", strerror(rc), rc);
+			break;
+		} else {
+			printf("readdir returned %d, not possible!\n", rc);
+			rc = EFAULT;
+		}
+	}
+
+	return (rc ? -rc : cb_arg.count);
+}

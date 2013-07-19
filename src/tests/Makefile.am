@@ -15,4 +15,4 @@ readwrite_SOURCES = readwrite.c
 readwrite_LDADD = ../libspace9.la -lpthread
 
 createtree_SOURCES = createtree.c
-createtree_LDADD = ../libspace9.la -lpthread -lm
+createtree_LDADD = ../libspace9.la -lpthread
