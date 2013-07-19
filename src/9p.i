@@ -233,7 +233,7 @@ mode is file mode if created, umask is applied") open;
 		errno = p9l_rm($self, path);
 	}
 	void mkdir(char *path, uint32_t mode) {
-		errno = p9l_mkdir($self, path, mode);
+		errno = p9l_mkdir($self->cwd, path, mode);
 	}
 	void link(char *target, char *linkname) {
 		errno = p9l_link($self, target, linkname);
@@ -354,6 +354,22 @@ mode is file mode if created, umask is applied") open;
 			errno = -rc;
 		}
 		return rc;
+	}
+	int createtree(char *name, int depth, int dwidth, int fwidth) {
+		ssize_t rc;
+		rc = p9l_createtree($self, name, depth, dwidth, fwidth);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return (rc > INT_MAX ? INT_MAX : rc);
+	}
+	int rmrf(char *name) {
+		ssize_t rc;
+		rc = p9l_rmrf($self, name);
+		if (rc < 0) {
+			errno = -rc;
+		}
+		return (rc > INT_MAX ? INT_MAX : rc);
 	}
 };
 
