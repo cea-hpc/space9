@@ -731,6 +731,8 @@ ssize_t p9l_write(struct p9_fid *fid, char *buffer, size_t count) {
 			tag_first++;
 		}
 		/** FIXME wait for writes even if rc < 0, keep rc for return value - first one matters */
+		if (tag_first < 0)
+			tag_first = 0;
 		while (rc >= 0 && tag_first < tag_last) {
 			rc = p9pz_write_wait(fid->p9_handle, pipeline[tag_first % n_pipeline].tag);
 			if (rc < 0) {
@@ -850,6 +852,8 @@ ssize_t p9l_read(struct p9_fid *fid, char *buffer, size_t count) {
 		tag_first++;
 	} while (count > total);
 	/** FIXME wait for writes even if rc < 0, keep rc for return value - first one matters */
+	if (tag_first < 0)
+		tag_first = 0;
 	while (rc >= 0 && tag_first < tag_last) {
 		rc = p9pz_read_wait(fid->p9_handle, &pipeline[tag_first % n_pipeline].data, pipeline[tag_first % n_pipeline].tag);
 		if (rc < 0) {
