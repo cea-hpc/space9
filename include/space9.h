@@ -61,7 +61,7 @@ struct fs_stats {
 	uint64_t blocks;
 	uint64_t bfree;
 	uint64_t bavail;
-	uint64_t filse;
+	uint64_t files;
 	uint64_t ffree;
 	uint64_t fsid;
 	uint32_t namelen;
@@ -523,7 +523,7 @@ int p9p_remove(struct p9_handle *p9_handle, struct p9_fid **pfid);
  * @param[out]    fs_stats:	Filled with infos. Must be non-NULL.
  * @return 0 on success, errno value on error.
  */
-int statfs(struct p9_handle *p9_handle, struct p9_fid *fid, struct fs_stats *fs_stats);
+int p9p_statfs(struct p9_handle *p9_handle, struct p9_fid *fid, struct fs_stats *fs_stats);
 
 /**
  * @brief Open a file by its fid
@@ -1051,6 +1051,17 @@ int p9l_chmod(struct p9_fid *cwd, char *path, uint32_t mode);
  * @return 0 on success, errno value on error.
  */
 int p9l_stat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
+
+/**
+ * @brief readlink by path
+ *
+ * @param[in]     cwd:		cwd handle
+ * @param[in]     path:		path of file
+ * @param[in]     buf:		buffer where to store attributes
+ * @param[in]     count:	buffer size
+ * @return size read on success, -errno value on error.
+ */
+ssize_t p9l_readlink(struct p9_fid *cwd, char *path, char *buf, size_t buflen);
 
 /**
  * @brief xattrget by path

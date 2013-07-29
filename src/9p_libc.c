@@ -43,7 +43,7 @@ int p9l_walk(struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags) {
 	do {
 		if (rec) {
 			if (data) {
-				p9c_putreply(p9_handle, data);
+				p9pz_readlink_put(p9_handle, data);
 				data = NULL;
 			}
 			if (tmp_fid) {
@@ -94,7 +94,7 @@ int p9l_walk(struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags) {
 		p9p_clunk(p9_handle, &dfid);
 	}
 	if (data) {
-		p9c_putreply(p9_handle, data);
+		p9pz_readlink_put(p9_handle, data);
 	}
 	if (tmp_fid) {
 		p9p_clunk(p9_handle, &tmp_fid);
@@ -517,7 +517,7 @@ int p9l_cp(struct p9_fid *cwd, char *src, char *dst) {
 				break;
 			}
 			offset += rc;
-			p9c_putreply(p9_handle, data);
+			p9pz_read_put(p9_handle, data);
 		} while (rc > 0);
 
 	} while (0);
@@ -1095,6 +1095,46 @@ ssize_t p9l_fxattrset(struct p9_fid *fid, char *field, char *buf, size_t count, 
 
 	return rc;
 };
+
+ssize_t p9l_readlink(struct p9_fid *cwd, char *path, char *buf, size_t buflen) {
+	struct p9_fid *fid;
+	struct p9_handle *p9_handle;
+	char *readlink;
+	msk_data_t *data;
+	ssize_t rc;
+
+	if (!cwd || !path || !buf || buflen == 0)
+		return -EINVAL;
+
+	p9_handle = cwd->p9_handle;
+
+	do {
+		rc = p9l_walk(cwd, path, &fid, AT_SYMLINK_NOFOLLOW);
+		if (rc) {
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "walk failed: %s (%zd)", strerror(-rc), -rc);
+			rc = -rc;
+			break;
+		}
+
+		rc = p9p_lopen(p9_handle, fid, O_RDONLY, NULL);
+		if (rc) {
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "lopen failed: %s (%zd)", strerror(-rc), -rc);
+			rc = -rc;
+			break;
+		}
+
+		rc = p9pz_readlink(p9_handle, fid, &readlink, &data);
+		if (rc > 0) {
+			memcpy(buf, readlink, MIN(rc, buflen));
+			p9pz_readlink_put(p9_handle, data);
+		} else {
+			INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "readlink failed: %s (%zd)", strerror(-rc), -rc);
+		}
+	} while (0);
+
+	return rc;
+}
+
 
 
 static ssize_t p9l_createtree_rec(struct p9_fid *fid, int depth, int dwidth, int fwidth) {

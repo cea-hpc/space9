@@ -1993,3 +1993,63 @@ int p9p_getlock(struct p9_handle *p9_handle, struct p9_fid *fid, uint8_t *ptype,
 
 	return rc;
 }
+
+int p9p_statfs(struct p9_handle *p9_handle, struct p9_fid *fid, struct fs_stats *fs_stats) {
+	int rc;
+	msk_data_t *data;
+	uint16_t tag;
+	uint8_t msgtype;
+	uint8_t *cursor;
+
+	/* Sanity check */
+	if (p9_handle == NULL || fid == NULL || fs_stats == NULL)
+		return EINVAL;
+
+
+	tag = 0;
+	rc = p9c_getbuffer(p9_handle, &data, &tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	p9_initcursor(cursor, data->data, P9_TSTATFS, tag);
+	p9_setvalue(cursor, fid->fid, uint32_t);
+	p9_setmsglen(cursor, data);
+
+	INFO_LOG(p9_handle->debug & P9_DEBUG_PROTO, "statfs on fid %u (%s)", fid->fid, fid->path);
+
+	rc = p9c_sendrequest(p9_handle, data, tag);
+	if (rc != 0)
+		return rc;
+
+	rc = p9c_getreply(p9_handle, &data, tag);
+	if (rc != 0 || data == NULL)
+		return rc;
+
+	cursor = data->data;
+	p9_getheader(cursor, msgtype);
+	switch(msgtype) {
+		case P9_RSTATFS:
+			p9_getvalue(cursor, fs_stats->type, uint32_t);
+			p9_getvalue(cursor, fs_stats->bsize, uint32_t);
+			p9_getvalue(cursor, fs_stats->blocks, uint64_t);
+			p9_getvalue(cursor, fs_stats->bfree, uint64_t);
+		        p9_getvalue(cursor, fs_stats->bavail, uint64_t);
+			p9_getvalue(cursor, fs_stats->files, uint64_t);
+			p9_getvalue(cursor, fs_stats->ffree, uint64_t);
+			p9_getvalue(cursor, fs_stats->fsid, uint64_t);
+		        p9_getvalue(cursor, fs_stats->namelen, uint32_t);
+			break;
+
+		case P9_RERROR:
+			p9_getvalue(cursor, rc, uint32_t);
+			break;
+
+		default:
+			ERROR_LOG("Wrong reply type %u to msg %u/tag %u", msgtype, P9_TGETLOCK, tag);
+			rc = EIO;
+	}
+
+	p9c_putreply(p9_handle, data);
+
+	return rc;
+}

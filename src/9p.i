@@ -297,10 +297,36 @@ mode is file mode if created, umask is applied") open;
 		}
 		return ret;
 	}
+	PyObject *statfs() {
+		struct fs_stats stat;
+		PyObject *ret = NULL;
+		errno = p9p_statfs($self, $self->cwd, &stat);
+		if (!errno) {
+			ret = Py_BuildValue("{sisisisisisisisisi}",
+				"type", stat.type, "bsize", stat.bsize, "blocks", stat.blocks,
+				"bfree", stat.bfree, "bavail", stat.bavail, "files", stat.files,
+				"ffree", stat.ffree, "fsid", stat.fsid, "namelen", stat.namelen);
+		}
+		return ret;
+	}
 	void fseek(struct p9_fid *fid, int64_t offset, int whence) {
 		errno = p9l_fseek(fid, offset, whence);
 	}
-	PyObject *xattrget(char *path, char *field, size_t count) {
+	PyObject *readlink(char *path, int size = 100) {
+		ssize_t rc;
+		char *buf = malloc(size);
+		PyObject *pystr = NULL;
+
+		rc = p9l_readlink($self->cwd, path, buf, size);
+		if (rc > 0) {
+			pystr = PyString_FromStringAndSize(buf, MIN(size, rc));
+		} else {
+			errno = -rc;
+		}
+
+		return pystr;
+	}
+	PyObject *xattrget(char *path, char *field, size_t count = 100) {
 		ssize_t rc;
 		char *buf = malloc(count);
 		PyObject *pystr = NULL;
@@ -322,10 +348,10 @@ mode is file mode if created, umask is applied") open;
 		}
 		return rc;
 	}
-	PyObject *fxattrlist(struct p9_fid *fid, size_t count) {
+	PyObject *fxattrlist(struct p9_fid *fid, size_t count = 100) {
 		return fxattrlist(fid, count);
 	}
-	PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count) {
+	PyObject *fxattrget(struct p9_fid *fid, char *field, size_t count = 100) {
 		return fxattrget(fid, field, count);
 	}
 	size_t fxattrset(struct p9_fid *fid, char *field, char *buf, int flags = 0) {
@@ -494,10 +520,10 @@ new fid can then be opened with fid.open() or it can be used to walk somewhere e
 		wrap->ptr = fid;
 		return wrap;
 	}
-	PyObject *xattrlist(size_t count) {
+	PyObject *xattrlist(size_t count = 100) {
 		return fxattrlist($self->ptr, count);
 	}
-	PyObject *xattrget(char *field, size_t count) {
+	PyObject *xattrget(char *field, size_t count = 100) {
 		return fxattrget($self->ptr, field, count);
 	}
 	size_t xattrset(char *field, char *buf, int flags = 0) {
