@@ -114,9 +114,9 @@ int p9s_ls(struct p9_handle *p9_handle, char *arg) {
 		}
 	}	
 
-	rc = p9l_ls(p9_handle, arg, cb, NULL);
+	rc = p9l_ls(p9_handle->cwd, arg, cb, NULL);
 	if (rc == -ENOTDIR) {
-		rc = p9l_open(p9_handle, arg, &fid, 0, 0, 0);
+		rc = p9l_open(p9_handle->cwd, arg, &fid, 0, 0, 0);
 		if (!rc) {
 			cb(fid, p9_handle, fid, &fid->qid, 0, strlen(arg), arg);
 			p9p_clunk(p9_handle, &fid);
@@ -170,11 +170,11 @@ int p9s_ln(struct p9_handle *p9_handle, char *arg) {
 	}
 
 	if (symlink) {
-		rc = p9l_symlink(p9_handle, arg, dst);
+		rc = p9l_symlink(p9_handle->cwd, arg, dst);
 		if (rc)
 			printf("symlink %s %s failed, error: %s (%d)\n", arg, dst, strerror(rc), rc);
 	} else {
-		rc = p9l_link(p9_handle, arg, dst);
+		rc = p9l_link(p9_handle->cwd, arg, dst);
 		if (rc)
 			printf("link %s %s failed, error: %s (%d)\n", arg, dst, strerror(rc), rc);
 	}
@@ -193,7 +193,7 @@ int p9s_cat(struct p9_handle *p9_handle, char *arg) {
 		return EINVAL;
 	}
 
-	rc = p9l_open(p9_handle, arg, &fid, O_RDONLY, 0, 0);
+	rc = p9l_open(p9_handle->cwd, arg, &fid, O_RDONLY, 0, 0);
 	if (rc) {
 		printf("open %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 		return rc;
@@ -261,7 +261,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 		buf[count]='\0';
 	}
 
-	rc = p9l_open(p9_handle, filename, &fid, O_WRONLY|O_CREAT|O_TRUNC, 0666, 0);
+	rc = p9l_open(p9_handle->cwd, filename, &fid, O_WRONLY|O_CREAT|O_TRUNC, 0666, 0);
 	if (rc) {
 		printf("open failed on %s, error: %s (%d)\n", filename, strerror(rc), rc);
 		return rc;
@@ -285,7 +285,7 @@ int p9s_xwrite(struct p9_handle *p9_handle, char *arg) {
 
 int p9s_rm(struct p9_handle *p9_handle, char *arg) {
 	int rc;
-	rc = p9l_rm(p9_handle, arg);
+	rc = p9l_rm(p9_handle->cwd, arg);
 	if (rc)
 		printf("rm %s failed, error: %s (%d)\n", arg, strerror(rc), rc);
 
@@ -303,6 +303,6 @@ int p9s_mv(struct p9_handle *p9_handle, char *arg) {
 	dest[0]='\0';
 	dest++;
 
-	return p9l_mv(p9_handle, arg, dest);
+	return p9l_mv(p9_handle->cwd, arg, dest);
 }
 

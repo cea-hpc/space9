@@ -31,9 +31,8 @@
 #include <fcntl.h>
 #include <getopt.h>
 
-#include "9p_internals.h"
-#include "utils.h"
-#include "settings.h"
+#include "space9.h"
+#include "utils.h" // logs
 
 #include "bucket.h"
 
@@ -42,6 +41,7 @@
 #define DEFAULT_CONFFILE "../sample.conf"
 
 char *startpoint = DEFAULT_STARTPOINT;
+int verbose = 0;
 
 struct nlist {
 	char name[MAXNAMLEN];
@@ -97,11 +97,11 @@ static void *walkthr(void* arg) {
 
 	buck = bucket_init(100, sizeof(struct nlist));
 	cb_arg.buck = buck;
-	cb_arg.debug = p9_handle->debug & 0x100;
+	cb_arg.debug = verbose;
 	cb_arg.tail = bucket_get(buck);
 	strncpy(cb_arg.tail->name, startpoint, MAXNAMLEN);
 	cb_arg.tail->next = NULL;
-	cb_arg.tail->pfid = p9_handle->root_fid;
+	cb_arg.tail->pfid = p9l_getcwd(p9_handle);
 
 	rc = 0;
 	fid = cb_arg.tail->pfid;
@@ -153,7 +153,8 @@ void print_help(char **argv) {
 	printf(	"Optional arguments:\n"
 		"	-t, --threads num: number of operating threads\n"
 		"	-c, --conf file: conf file to use\n"
-		"	-s, --start[point] dir: do the walk from there\n");
+		"	-s, --start[point] dir: do the walk from there\n"
+		" 	-v, --verbose: print what's found\n");
 }
 
 int main(int argc, char **argv) {
@@ -170,13 +171,14 @@ int main(int argc, char **argv) {
 		{ "start",	required_argument,	0,		's' },
 		{ "help",	no_argument,		0,		'h' },
 		{ "threads",	required_argument,	0,		't' },
+		{ "verbose",	no_argument,		0,		'v' },
 		{ 0,		0,			0,		 0  }
 	};
 
 	int option_index = 0;
 	int op;
 
-	while ((op = getopt_long(argc, argv, "@c:s:ht:", long_options, &option_index)) != -1) {
+	while ((op = getopt_long(argc, argv, "@vc:s:ht:", long_options, &option_index)) != -1) {
 		switch(op) {
 			case '@':
 				printf("%s compiled on %s at %s\n", argv[0], __DATE__, __TIME__);
@@ -200,6 +202,9 @@ int main(int argc, char **argv) {
 					printf("invalid thread number %s, using default\n", optarg);
 					thrnum = DEFAULT_THRNUM;
 				}
+				break;
+			case 'v':
+				verbose = 1;
 				break;
 			default:
 				ERROR_LOG("Failed to parse arguments");

@@ -190,7 +190,7 @@ Most fd-operations can be done on fids once you have one (walk or open)") p9_han
 new fid can then be opened with fid.open() or it can be used to walk somewhere else") walk;
 	struct fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
-		if ((errno = p9l_walk($self, path[0] == '/' ? $self->root_fid : $self->cwd, path, &fid, flags)))
+		if ((errno = p9l_walk($self->cwd, path, &fid, flags)))
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
@@ -201,9 +201,9 @@ new fid can then be opened with fid.open() or it can be used to walk somewhere e
 
 flags are open flags (both O_RDONLY/O_WRONLY/O_RDWR and O_CREAT, O_APPEND, O_TRUNC)
 mode is file mode if created, umask is applied") open;
-	struct fid *open(char *path, uint32_t flags, uint32_t mode) {
+	struct fid *open(char *path, uint32_t flags = O_RDWR, uint32_t mode = 0) {
 		struct p9_fid *fid;
-		if ((errno = p9l_open($self, path, &fid, flags, mode, 0)))
+		if ((errno = p9l_open($self->cwd, path, &fid, flags, mode, 0)))
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));
@@ -215,7 +215,7 @@ mode is file mode if created, umask is applied") open;
 	}
 	PyObject *ls(char *path = "") {
 		PyObject *list = PyList_New(0);
-		errno = p9l_ls($self, path, ls_cb, list);
+		errno = p9l_ls($self->cwd, path, ls_cb, list);
 		if (errno < 0) {
 			errno = -errno;
 			return NULL;
@@ -224,31 +224,31 @@ mode is file mode if created, umask is applied") open;
 		return list;
 	}
 	void mv(char *src, char *dst) {
-		errno = p9l_mv($self, src, dst);
+		errno = p9l_mv($self->cwd, src, dst);
 	}
 	void cp(char *src, char *dst) {
-		errno = p9l_cp($self, src, dst);
+		errno = p9l_cp($self->cwd, src, dst);
 	}
 	void rm(char *path) {
-		errno = p9l_rm($self, path);
+		errno = p9l_rm($self->cwd, path);
 	}
 	void mkdir(char *path, uint32_t mode) {
 		errno = p9l_mkdir($self->cwd, path, mode);
 	}
 	void link(char *target, char *linkname) {
-		errno = p9l_link($self, target, linkname);
+		errno = p9l_link($self->cwd, target, linkname);
 	}
 	void symlink(char *target, char *linkname) {
-		errno = p9l_symlink($self, target, linkname);
+		errno = p9l_symlink($self->cwd, target, linkname);
 	}
 	void chown(char *path, uint32_t uid, uint32_t gid) {
-		errno = p9l_chown($self, path, uid, gid);
+		errno = p9l_chown($self->cwd, path, uid, gid);
 	}
 	void fchown(struct p9_fid *fid, uint32_t uid, uint32_t gid) {
 		errno = p9l_fchown(fid, uid, gid);
 	}
 	void chmod(char *path, uint32_t mode) {
-		errno = p9l_chmod($self, path, mode);
+		errno = p9l_chmod($self->cwd, path, mode);
 	}
 	void fchmod(struct p9_fid *fid, uint32_t mode) {
 		errno = p9l_fchmod(fid, mode);
@@ -257,7 +257,7 @@ mode is file mode if created, umask is applied") open;
 		struct p9_getattr attr;
 		PyObject *ret = NULL;
 		attr.valid = P9_GETATTR_BASIC;
-		errno = p9l_stat($self, path, &attr);
+		errno = p9l_stat($self->cwd, path, &attr, 0);
 		if (!errno) {
 			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
@@ -273,7 +273,7 @@ mode is file mode if created, umask is applied") open;
 		struct p9_getattr attr;
 		PyObject *ret = NULL;
 		attr.valid = P9_GETATTR_BASIC;
-		errno = p9l_lstat($self, path, &attr);
+		errno = p9l_stat($self->cwd, path, &attr, AT_SYMLINK_NOFOLLOW);
 		if (!errno) {
 			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
@@ -305,7 +305,7 @@ mode is file mode if created, umask is applied") open;
 		char *buf = malloc(count);
 		PyObject *pystr = NULL;
 
-		rc = p9l_xattrget($self, path, field, buf, count);
+		rc = p9l_xattrget($self->cwd, path, field, buf, count);
 		if (rc >= 0) {
 			pystr = PyString_FromStringAndSize(buf, MIN(count, rc));
 		} else {
@@ -316,7 +316,7 @@ mode is file mode if created, umask is applied") open;
 	}
 	size_t xattrset(char *path, char *field, char *buf, int flags = 0) {
 		ssize_t rc;
-		rc = p9l_xattrset($self, path, field, buf, strlen(buf), flags);
+		rc = p9l_xattrset($self->cwd, path, field, buf, strlen(buf), flags);
 		if (rc < 0) {
 			errno = -rc;
 		}
@@ -357,7 +357,7 @@ mode is file mode if created, umask is applied") open;
 	}
 	int createtree(char *name, int depth, int dwidth, int fwidth) {
 		ssize_t rc;
-		rc = p9l_createtree($self, name, depth, dwidth, fwidth);
+		rc = p9l_createtree($self->cwd, name, depth, dwidth, fwidth);
 		if (rc < 0) {
 			errno = -rc;
 		}
@@ -365,7 +365,7 @@ mode is file mode if created, umask is applied") open;
 	}
 	int rmrf(char *name) {
 		ssize_t rc;
-		rc = p9l_rmrf($self, name);
+		rc = p9l_rmrf($self->cwd, name);
 		if (rc < 0) {
 			errno = -rc;
 		}
@@ -380,12 +380,12 @@ p9_fid(p9_handle, path[, flags, mode])
 On creation it's either not opened (if so, open later) or if open flags are set it's opened directly.
 flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 %extend fid {
-	fid(struct p9_handle *p9_handle, char *path, uint32_t flags = 0, uint32_t mode = 0) {
+	fid(struct p9_handle *p9_handle, char *path, uint32_t flags = O_RDWR, uint32_t mode = 0) {
 		struct p9_fid *fid;
 		if (flags == 0) {
-			errno = p9l_walk(p9_handle, path[0] == '/' ? p9_handle->root_fid : p9_handle->cwd, path, &fid, flags);
+			errno = p9l_walk(p9_handle->cwd, path, &fid, flags);
 		} else {
-			errno = p9l_open(p9_handle, path, &fid, flags, mode, 0);
+			errno = p9l_open(p9_handle->cwd, path, &fid, flags, mode, 0);
 		}
 		if (errno)
 			return NULL;
@@ -424,7 +424,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 	}
 %feature("docstring", "unlink - does NOT close") unlink;
 	void unlink() {
-		p9l_rm($self->ptr->p9_handle, $self->ptr->path);
+		p9l_rm($self->ptr, $self->ptr->path);
 	}
 %feature("docstring", "open if fid was obtained from a walk/had no flag on creation") open;
        void open(uint32_t flags) {
@@ -487,7 +487,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 new fid can then be opened with fid.open() or it can be used to walk somewhere else") walk;
 	struct fid *walk(char *path, int flags = 0) {
 		struct p9_fid *fid;
-		if ((errno = p9l_walk($self->ptr->p9_handle, $self->ptr, path, &fid, flags)))
+		if ((errno = p9l_walk($self->ptr, path, &fid, flags)))
 			return NULL;
 
 		struct fid *wrap = malloc(sizeof(struct fid));

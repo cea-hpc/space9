@@ -34,9 +34,9 @@
 #include <getopt.h>
 #include <math.h>
 
-#include "9p_internals.h"
-#include "utils.h"
-#include "settings.h"
+#include "space9.h" // public api
+
+#include "utils.h" // ERROR_LOG, INFO_LOG
 
 
 #define DEFAULT_THRNUM 3
@@ -77,7 +77,7 @@ static void *createtreethr(void* arg) {
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
 
-		numcreate = p9l_createtree(p9_handle, dirname, thrarg->depth, thrarg->dwidth, thrarg->fwidth);
+		numcreate = p9l_createtree(p9l_getcwd(p9_handle), dirname, thrarg->depth, thrarg->dwidth, thrarg->fwidth);
 
 		if (numcreate < 0) {
 			rc = -numcreate;
@@ -95,7 +95,7 @@ static void *createtreethr(void* arg) {
 		pthread_barrier_wait(&thrarg->barrier);
 		gettimeofday(&start, NULL);
 
-		numunlink = p9l_rmrf(p9_handle, dirname);
+		numunlink = p9l_rmrf(p9l_getcwd(p9_handle), dirname);
 
 		if (numunlink < 0) {
 			rc = -numunlink;
@@ -251,7 +251,7 @@ int main(int argc, char **argv) {
                 return rc;
         }
 
-	rc = p9l_mkdir(thrarg.p9_handle->root_fid, basename, 0);
+	rc = p9l_mkdir(p9l_getcwd(thrarg.p9_handle), basename, 0);
 	if (rc && rc != EEXIST) {
 		printf("couldn't create base directory %s in /, error %s (%d)\n", basename, strerror(rc), rc);
 		return rc;
@@ -272,9 +272,11 @@ int main(int argc, char **argv) {
 
 	printf("Starting %d create_trees with depth %d, dwidth %d, fwidth %d\n", thrnum, thrarg.depth, thrarg.dwidth, thrarg.fwidth);
 
-	pthread_barrier_wait(&thrarg.barrier);
+	if (!thrarg.no_unlink) {
+		pthread_barrier_wait(&thrarg.barrier);
 
-	printf("Starting unlinks\n");
+		printf("Starting unlinks\n");
+	}
 
 	for (i=0; i<thrnum; i++)
 		pthread_join(thrid[i], NULL);

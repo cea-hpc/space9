@@ -873,6 +873,31 @@ int p9p_unlinkat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *name, u
  */
 
 /**
+ * @brief getcwd
+ *
+ * @param[in] p9_handle: connection handle
+ * @return cwd fid
+ */
+struct p9_fid *p9l_getcwd(struct p9_handle *p9_handle);
+
+/**
+ * @brief getroot
+ *
+ * @param[in] p9_handle: connection handle
+ * @return root fid
+ */
+struct p9_fid *p9l_getroot(struct p9_handle *p9_handle);
+
+/**
+ * @brief pipeline - change the setting and get old one back
+ *
+ * @param[in] p9_handle: connection handle
+ * @return cwd
+ */
+uint32_t p9l_pipeline(struct p9_handle *p9_handle, uint32_t pipeline);
+
+
+/**
  * @brief clunk
  *
  * @param[in,out] pfid:		pointer to fid to clunk. will not clunk rootdir/cwd
@@ -883,35 +908,19 @@ int p9l_clunk(struct p9_fid **pfid);
 /**
  * @brief walk that follows symlinks unless called with AT_SYMLINK_NOFOLLOW
  *
- * @param[in]     p9_handle:	connection handle
  * @param[in]     dfid:		walk from there
  * @param[in]     path:		path to walk to
  * @param[out]    pfid:		pointer to new fid
  * @param[in]     flags:	0 or AT_SYMLINK_NOFOLLOW
  * @return 0 on success, errno value on error.
  */
-int p9l_walk(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
-
-/**
- * @brief complex open by path call
- * Handles new file creation (if O_CREAT) and other flags (O_TRUNC, O_APPEND)
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     path:		path of file, relative from working directory, absolute from mount point
- * @param[out]    pfid:		pointer to new fid
- * @param[in]     flags:	bitwise flag with O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND
- * @param[in]     mode:		mode of new file if created. umask IS applied.
- * @param[in]     gid:		gid of new file if created.
- * @return 0 on success, errno value on error.
- */
-int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
+int p9l_walk(struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags);
 
 /**
  * @brief complex open by directory+path call
  * Handles new file creation (if O_CREAT) and other flags (O_TRUNC, O_APPEND)
  *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     dfid:		directory fid
+ * @param[in]     cwd:		directory fid
  * @param[in]     path:		path of file, relative from dfid
  * @param[out]    pfid:		pointer to new fid
  * @param[in]     flags:	bitwise flag with O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND
@@ -919,20 +928,20 @@ int p9l_open(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, uint
  * @param[in]     gid:		gid of new file if created.
  * @return 0 on success, errno value on error.
  */
-int p9l_openat(struct p9_handle *p9_handle, struct p9_fid *dfid, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
+int p9l_open(struct p9_fid *cwd, char *path, struct p9_fid **pfid, uint32_t flags, uint32_t mode, uint32_t gid);
 
 /**
  * @brief ls by path
  * opens directory given by path name and applies callback on each entry with custom arg
  * see examples in 9p_shell_functions.c
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     path:		dir path (relative from cwd/absolute from mount point)
  * @param[in]     cb:		callback function
  * @param[in]     cb_arg:	callback custom arg
  * @return 0 on success, errno value on error.
  */
-ssize_t p9l_ls(struct p9_handle *p9_handle, char *path, p9p_readdir_cb cb, void *cb_arg);
+ssize_t p9l_ls(struct p9_fid *cwd, char *path, p9p_readdir_cb cb, void *cb_arg);
 
 /**
  * @brief cd
@@ -946,31 +955,31 @@ int p9l_cd(struct p9_handle *p9_handle, char *path);
 /**
  * @brief mv
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     src:		former file name
  * @param[in]     dst:		new file name
  * @return 0 on success, errno value on error.
  */
-int p9l_mv(struct p9_handle *p9_handle, char *src, char *dst);
+int p9l_mv(struct p9_fid *cwd, char *src, char *dst);
 
 /**
  * @brief cp
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     src:		source file name
  * @param[in]     dst:		destination file name
  * @return 0 on success, errno value on error.
  */
-int p9l_cp(struct p9_handle *p9_handle, char *src, char *dst);
+int p9l_cp(struct p9_fid *cwd, char *src, char *dst);
 
 /**
  * @brief rm AND rmdir - there is NO distinction!!!
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		fid to use as cwd
  * @param[in]     path:		path of file to remove
  * @return 0 on success, errno value on error.
  */
-int p9l_rm(struct p9_handle *p9_handle, char *path);
+int p9l_rm(struct p9_fid *cwd, char *path);
 
 /**
  * @brief mkdir by fid
@@ -985,22 +994,22 @@ int p9l_mkdir(struct p9_fid *fid, char *path, uint32_t mode);
 /**
  * @brief link by path
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		fid to use as cwd
  * @param[in]     target:	link target path
  * @param[in]     linkname:	link path
  * @return 0 on success, errno value on error.
  */
-int p9l_link(struct p9_handle *p9_handle, char *target, char *linkname);
+int p9l_link(struct p9_fid *cwd, char *target, char *linkname);
 
 /**
  * @brief symlink
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		fid to use as cwd
  * @param[in]     target:	symlink content
  * @param[in]     linkname:	link path
  * @return 0 on success, errno value on error.
  */
-int p9l_symlink(struct p9_handle *p9_handle, char *target, char *linkname);
+int p9l_symlink(struct p9_fid *cwd, char *target, char *linkname);
 
 /**
  * @brief umask
@@ -1014,74 +1023,65 @@ int p9l_umask(struct p9_handle *p9_handle, uint32_t mask);
 /**
  * @brief chown by path
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		fid to use as cwd
  * @param[in]     path:		path of file to chown
  * @param[in]     uid:		uid...
  * @param[in]     gid:		gid...
  * @return 0 on success, errno value on error.
  */
-int p9l_chown(struct p9_handle *p9_handle, char *path, uint32_t uid, uint32_t gid);
+int p9l_chown(struct p9_fid *cwd, char *path, uint32_t uid, uint32_t gid);
 
 /**
  * @brief chmod by path
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		fid to use as cwd
  * @param[in]     path:		path of file to chown
  * @param[in]     mode:		mode...
  * @return 0 on success, errno value on error.
  */
-int p9l_chmod(struct p9_handle *p9_handle, char *path, uint32_t mode);
+int p9l_chmod(struct p9_fid *cwd, char *path, uint32_t mode);
 
 /**
- * @brief stat by path
+ * @brief stat
  *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     path:		path of file to stat
- * @param[in,out] attr:		attr to fill, must NOT be null
+ * @param[in]     dfid:		fid of a directory
+ * @param[in]     path:		path of file in dir
+ * @param[in,out] attr:		attr to fill. must NOT be null.
+ * @param[in]     flags:	0 or AT_SYMLINK_NOFOLLOW
  * @return 0 on success, errno value on error.
  */
-int p9l_stat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
-
-/**
- * @brief stat by path that doesn't follow symlinks
- *
- * @param[in]     p9_handle:	connection handle
- * @param[in]     path:		path of file to stat
- * @param[in,out] attr:		attr to fill, must NOT be null
- * @return 0 on success, errno value on error.
- */
-int p9l_lstat(struct p9_handle *p9_handle, char *path, struct p9_getattr *attr);
+int p9l_stat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
 
 /**
  * @brief xattrget by path
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     path:		path of file
  * @param[in]     field:	attribute name. if "" or NULL, will return the list separated by \0s
  * @param[in]     buf:		buffer where to store attributes
  * @param[in]     count:	buffer size
  * @return size read on success, -errno value on error.
  */
-ssize_t p9l_xattrget(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count);
+ssize_t p9l_xattrget(struct p9_fid *cwd, char *path, char *field, char *buf, size_t count);
 
 /**
  * @brief xattrlist - wrapper around xattrget with NULL field
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     path:		path of file
  * @param[in]     buf:		buffer where to store attributes
  * @param[in]     count:	buffer size
  * @return size read on success, -errno value on error.
  */
-static inline ssize_t p9l_xattrlist(struct p9_handle *p9_handle, char *path, char *buf, size_t count) {
-	return p9l_xattrget(p9_handle, path, NULL, buf, count);
+static inline ssize_t p9l_xattrlist(struct p9_fid *cwd, char *path, char *buf, size_t count) {
+	return p9l_xattrget(cwd, path, NULL, buf, count);
 }
 
 
 /**
  * @brief xattrset by path
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd handle
  * @param[in]     path:		path of file
  * @param[in]     field:	field to define
  * @param[in]     buf:		buffer to copy from. if empty, the attribute is removed
@@ -1090,19 +1090,8 @@ static inline ssize_t p9l_xattrlist(struct p9_handle *p9_handle, char *path, cha
  *				or XATTR_REPLACE (fail if doesn't exist)
  * @return size written on success, -errno value on error.
  */
-ssize_t p9l_xattrset(struct p9_handle *p9_handle, char *path, char *field, char *buf, size_t count, int flags);
+ssize_t p9l_xattrset(struct p9_fid *cwd, char *path, char *field, char *buf, size_t count, int flags);
 
-
-/**
- * @brief fstatat
- *
- * @param[in]     dfid:		fid of a directory
- * @param[in]     path:		path of file in dir
- * @param[in,out] attr:		attr to fill. must NOT be null.
- * @param[in]     flags:	0 or AT_SYMLINK_NOFOLLOW
- * @return 0 on success, errno value on error.
- */
-int p9l_fstatat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags);
 
 /**
  * @brief xattrget by fid
@@ -1277,23 +1266,23 @@ ssize_t p9l_readv(struct p9_fid *fid, struct iovec *iov, int iovcnt);
 /**
  * @brief create a large tree
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd fid
  * @param[in]     path:		base of the tree
  * @param[in]     depth:	depth of the tree
  * @param[in]     dwidth:	number of dirs per level
  * @param[in]     fwidth:	number of entries per level - fill up with empty files.
  * @return number of entries (dir+files) created on success, -errno value on error
  */
-ssize_t p9l_createtree(struct p9_handle *p9_handle, char *name, int depth, int dwidth, int fwidth);
+ssize_t p9l_createtree(struct p9_fid *cwd, char *name, int depth, int dwidth, int fwidth);
 
 /**
  * @brief rm -rf
  *
- * @param[in]     p9_handle:	connection handle
+ * @param[in]     cwd:		cwd fid
  * @param[in]     path:		base of the tree
  * @return number of entries (dir+files) removed on success, -errno value on error
  */
-ssize_t p9l_rmrf(struct p9_handle *p9_handle, char *path);
+ssize_t p9l_rmrf(struct p9_fid *cwd, char *path);
 
 /**
  * @}

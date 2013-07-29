@@ -33,9 +33,8 @@
 #include <sys/time.h>
 #include <getopt.h>
 
-#include "9p_internals.h"
-#include "utils.h"
-#include "settings.h"
+#include "space9.h"
+#include "utils.h" // logs
 
 
 #define DEFAULT_THRNUM 1
@@ -77,7 +76,7 @@ static void *readwritethr(void* arg) {
 
 	do {
 		/* get a fid to write in */
-		rc = p9l_open(p9_handle, filename, &fid, O_CREAT|O_TRUNC|O_RDWR, 0640, 0);
+		rc = p9l_open(p9l_getcwd(p9_handle), filename, &fid, O_CREAT|O_TRUNC|O_RDWR, 0640, 0);
 		if (rc) {
 			printf("couldn't open file %s, error: %s (%d)\n", filename, strerror(rc), rc);
 			break;
@@ -129,7 +128,7 @@ static void *readwritethr(void* arg) {
 		if (tmprc) {
 			printf("clunk failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
 		}
-		tmprc = p9p_unlinkat(p9_handle, p9_handle->root_fid, filename, 0);
+		tmprc = p9p_unlinkat(p9_handle, p9l_getcwd(p9_handle), filename, 0);
 		if (tmprc) {
 			printf("unlinkat failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
 		}
@@ -268,7 +267,7 @@ int main(int argc, char **argv) {
         }
 
 	if (pipeline)
-		thrarg.p9_handle->pipeline = pipeline;
+		p9l_pipeline(thrarg.p9_handle, pipeline);
 
         INFO_LOG(1, "Init success");
 
