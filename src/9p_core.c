@@ -125,16 +125,22 @@ int p9c_reconnect(struct p9_handle *p9_handle) {
 			continue;
 
 		rc = p9_handle->net_ops->finalize_connect(p9_handle->trans);
-		if (rc)
+		if (rc) {
+			ERROR_LOG("msk_finalize_connect failed: %s (%d)", strerror(rc), rc);
 			continue;
+		}
 
 		rc = p9p_version(p9_handle);
-		if (rc)
+		if (rc) {
+			ERROR_LOG("version failed: %s (%d)", strerror(rc), rc);
 			break;
+		}
 
 		rc = p9p_attach(p9_handle, p9_handle->uid, &p9_handle->root_fid);
-		if (rc)
+		if (rc) {
+			ERROR_LOG("attach failed: %s (%d)", strerror(rc), rc);
 			break;
+		}
 
 		for (i=1; i < p9_handle->max_fid; i++) {
 			if (p9_handle->fids[i] != NULL)
