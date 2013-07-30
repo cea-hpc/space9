@@ -19,6 +19,10 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <stdio.h>	//printf
 #include <stdlib.h>	//malloc
 #include <string.h>	//memcpy

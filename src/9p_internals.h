@@ -25,6 +25,17 @@ typedef struct msk_trans msk_trans_t;
 typedef void (*ctx_callback_t)(msk_trans_t *trans, msk_data_t *data, void *arg);
 typedef void (*disconnect_callback_t) (msk_trans_t *trans);
 
+struct msk_stats {
+	uint64_t rx_bytes;
+	uint64_t rx_pkt;
+	uint64_t tx_bytes;
+	uint64_t tx_pkt;
+	uint64_t err;
+	/* timespecs only used debug has MSK_DEBUG_SPEED */
+	struct timespec time_callback;
+	struct timespec time_compevent;
+};
+
 /**
  * \struct msk_trans
  * RDMA transport instance
@@ -37,6 +48,7 @@ struct msk_trans {
 		MSK_ROUTE_RESOLVED,
 		MSK_CONNECT_REQUEST,
 		MSK_CONNECTED,
+		MSK_CLOSING,
 		MSK_CLOSED,
 		MSK_ERROR
 	} state;			/**< tracks the transport state machine for connection setup and tear down */
@@ -55,6 +67,8 @@ struct msk_trans {
 	int max_recv_sge;		/**< Maximum number of s/g elements per recv */
 	sockaddr_union_t addr;		/**< The remote peer's address */
 	int server;			/**< 0 if client, number of connections to accept on server, -1 (MSK_SERVER_CHILD) if server's accepted connection */
+	int destroy_on_disconnect;      /**< set to 1 if mooshika should perform cleanup */
+	uint32_t debug;
 	struct rdma_cm_id **conn_requests; /**< temporary child cm_id, only used for server */
 	msk_ctx_t *send_buf;		/**< pointer to actual context data */
 	msk_ctx_t *recv_buf;		/**< pointer to actual context data */
@@ -64,6 +78,7 @@ struct msk_trans {
 	pthread_cond_t cm_cond;		/**< cond for connection events */
 	struct ibv_recv_wr *bad_recv_wr;
 	struct ibv_send_wr *bad_send_wr;
+	struct msk_stats stats;
 };
 
 struct msk_trans_attr {
