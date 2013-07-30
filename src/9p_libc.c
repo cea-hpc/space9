@@ -1279,12 +1279,6 @@ ssize_t p9l_rmrf(struct p9_fid *cwd, char *path) {
 
 	p9_handle = cwd->p9_handle;
 
-	rc = p9l_walk(cwd, path, &fid, 0);
-	if (rc) {
-		INFO_LOG(p9_handle->debug & P9_DEBUG_LIBC, "couldn't walk to base directory %s in %s, error %s (%d)", path, cwd->path, strerror(rc), rc);
-		return rc;
-	}
-
 	buck = bucket_init(100, sizeof(struct nlist));
 	cb_arg.buck = buck;
 	cb_arg.count = 0;

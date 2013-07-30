@@ -699,7 +699,7 @@ int p9p_lcreate(struct p9_handle *p9_handle, struct p9_fid *fid, char *name, uin
 	p9_getheader(cursor, msgtype);
 	switch(msgtype) {
 		case P9_RLCREATE:
-			fid->pathlen += snprintf(fid->path+fid->pathlen, MAXPATHLEN-fid->pathlen, "%s", name);
+			fid->pathlen += snprintf(fid->path+fid->pathlen, MAXPATHLEN-fid->pathlen, "/%s", name);
 			if (flags & O_WRONLY)
 				fid->openflags = WRFLAG;
 			else if (flags & O_RDWR)

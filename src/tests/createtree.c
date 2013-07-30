@@ -205,10 +205,6 @@ int main(int argc, char **argv) {
 				break;
 			case 'd':
 				thrarg.depth = atoi(optarg);
-				if (thrarg.depth == 0) {
-					printf("invalid depth number %s, using default\n", optarg);
-					thrarg.depth = DEFAULT_DEPTH;
-				}
 				break;
 			case 'W':
 				thrarg.dwidth = atoi(optarg);
