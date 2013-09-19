@@ -30,8 +30,8 @@
 #define DEFAULT_UID        0
 #define DEFAULT_RECV_NUM   64
 #define DEFAULT_MSIZE      64*1024
-#define DEFAULT_PORT_RDMA  5640
-#define DEFAULT_PORT_TCP   564
+#define DEFAULT_PORT_RDMA  "5640"
+#define DEFAULT_PORT_TCP   "564"
 #define DEFAULT_MAX_FID    1024
 #define DEFAULT_PIPELINE   2
 #define DEFAULT_DEBUG      0x01

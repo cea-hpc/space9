@@ -36,6 +36,30 @@ struct msk_stats {
 	struct timespec time_compevent;
 };
 
+enum ibv_qp_type {
+	IBV_QPT_RC = 2,
+	IBV_QPT_UC,
+	IBV_QPT_UD
+};
+
+struct ibv_qp_cap {
+	uint32_t		max_send_wr;
+	uint32_t		max_recv_wr;
+	uint32_t		max_send_sge;
+	uint32_t		max_recv_sge;
+	uint32_t       		max_inline_data;
+};
+
+struct ibv_qp_init_attr	{
+	void		       *qp_context;
+	struct ibv_cq	       *send_cq;
+	struct ibv_cq	       *recv_cq;
+	struct ibv_srq	       *srq;
+	struct ibv_qp_cap	cap;
+	enum ibv_qp_type	qp_type;
+	int			sq_sig_all;
+};
+
 /**
  * \struct msk_trans
  * RDMA transport instance
@@ -61,11 +85,10 @@ struct msk_trans {
 	disconnect_callback_t disconnect_callback;
 	void *private_data;
 	long timeout;			/**< Number of mSecs to wait for connection management events */
-	int sq_depth;			/**< The depth of the Send Queue */
-	int max_send_sge;		/**< Maximum number of s/g elements per send */
-	int rq_depth;			/**< The depth of the Receive Queue. */
-	int max_recv_sge;		/**< Maximum number of s/g elements per recv */
-	sockaddr_union_t addr;		/**< The remote peer's address */
+	struct ibv_qp_init_attr qp_attr;
+	char *node;			/**< The remote peer's hostname */
+	char *port;			/**< The service port (or name) */
+	int conn_type;			/**< RDMA Port space, probably RDMA_PS_TCP */
 	int server;			/**< 0 if client, number of connections to accept on server, -1 (MSK_SERVER_CHILD) if server's accepted connection */
 	int destroy_on_disconnect;      /**< set to 1 if mooshika should perform cleanup */
 	uint32_t debug;
@@ -79,12 +102,15 @@ struct msk_trans {
 	struct ibv_recv_wr *bad_recv_wr;
 	struct ibv_send_wr *bad_send_wr;
 	struct msk_stats stats;
+	char *stats_prefix;
+	int stats_sock;
 };
 
 struct msk_trans_attr {
 	disconnect_callback_t disconnect_callback;
 	int debug;			/**< verbose output to stderr if set */
 	int server;			/**< 0 if client, number of connections to accept on server */
+	int destroy_on_disconnect;      /**< set to 1 if mooshika should perform cleanup */
 	long timeout;			/**< Number of mSecs to wait for connection management events */
 	int sq_depth;			/**< The depth of the Send Queue */
 	int max_send_sge;		/**< Maximum number of s/g elements per send */
@@ -92,8 +118,11 @@ struct msk_trans_attr {
 	int max_recv_sge;		/**< Maximum number of s/g elements per recv */
 	int worker_count;		/**< Number of worker threads - works only for the first init */
 	int worker_queue_size;		/**< Size of the worker data queue - works only for the first init */
-	sockaddr_union_t addr;		/**< The remote peer's address */
+	int conn_type;			/**< RDMA Port space, probably RDMA_PS_TCP */
+	char *node;			/**< The remote peer's hostname */
+	char *port;			/**< The service port (or name) */
 	struct ibv_pd *pd;		/**< Protection Domain pointer */
+	char *stats_prefix;
 };
 
 

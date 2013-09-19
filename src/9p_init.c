@@ -118,10 +118,9 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	FILE *fd;
 	char line[2*MAXPATHLEN];
 	int i, ret, rc;
-	struct hostent *host;
 	char buf_s[MAXNAMLEN];
 	int buf_i;
-	uint16_t port;
+	char *port;
 	void *ptr;
 	rc = 0;
 
@@ -135,7 +134,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 
 	// fill default values.
 	memset(p9_conf, 0, sizeof(struct p9_conf));
-	port = 0;
+	port = NULL;
 	p9_conf->trans_attr.server = -1;
 	p9_conf->trans_attr.disconnect_callback = p9_disconnect_cb;
 	p9_conf->trans_attr.max_send_sge = 2;
@@ -205,10 +204,7 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 						rc = EINVAL;
 						goto out;
 					}
-					host = gethostbyname(buf_s);
-					//FIXME: if (host->h_addrtype == AF_INET6) {
-					p9_conf->trans_attr.addr.sa_in.sin_family = AF_INET;
-					memcpy(&p9_conf->trans_attr.addr.sa_in.sin_addr, host->h_addr_list[0], 4);
+					p9_conf->trans_attr.node = strdup(buf_s);
 
 					// Sanity check: we got an IP
 					p9_conf->trans_attr.server = 0;
@@ -216,15 +212,15 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %s", conf_array[i].token, buf_s);
 					break;
 				case PORT:
-					if (sscanf(line, "%*s = %i", &buf_i) != 1) {
+					if (sscanf(line, "%*s = %s", buf_s) != 1) {
 						ERROR_LOG("scanf error on line: %s", line);
 						rc = EINVAL;
 						goto out;
 					}
 
-					port = buf_i;
+					port = strdup(buf_s);
 
-					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %i", conf_array[i].token, buf_i);
+					INFO_LOG(p9_conf->debug & P9_DEBUG_SETUP, "Read %s: %s", conf_array[i].token, buf_s);
 					break;
 				case NET_TYPE:
 					if (sscanf(line, "%*s = %s", buf_s) != 1) {
@@ -255,17 +251,17 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	}
 
 	// Default port. depends on the sin family
-	if (port == 0) {
+	if (port == NULL) {
 		if (p9_conf->net_ops == &p9_tcp_ops)
-			((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(DEFAULT_PORT_TCP);
+			p9_conf->trans_attr.port = DEFAULT_PORT_TCP;
 #if HAVE_MOOSHIKA
 		else if(p9_conf->net_ops == &p9_rdma_ops)
-			((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(DEFAULT_PORT_RDMA);
+			p9_conf->trans_attr.port = DEFAULT_PORT_RDMA;
 #endif
 		else
 			ERROR_LOG("ops neither tcp nor rdma?");
 	} else {
-		((struct sockaddr_in*) &p9_conf->trans_attr.addr)->sin_port = htons(port);
+		p9_conf->trans_attr.port = port;
 	}
 
 out:
@@ -305,6 +301,14 @@ void p9_destroy(struct p9_handle **pp9_handle) {
 		}
 		if (p9_handle->trans) {
 			p9_handle->net_ops->destroy_trans(&p9_handle->trans);
+		}
+		if (p9_handle->trans_attr.node) {
+			free(p9_handle->trans_attr.node);
+			p9_handle->trans_attr.node = NULL;
+		}
+		if (p9_handle->trans_attr.port) {
+			free(p9_handle->trans_attr.port);
+			p9_handle->trans_attr.port = NULL;
 		}
 		free(p9_handle);
 		*pp9_handle = NULL;

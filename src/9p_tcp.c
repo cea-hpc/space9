@@ -167,17 +167,17 @@ static void *msk_tcp_recv_thread(void *arg) {
 		pthread_mutex_lock(&trans->ctx_lock);
 		do {
 			for (i = 0, ctx = trans->recv_buf;
-			     i < trans->rq_depth;
+			     i < trans->qp_attr.cap.max_recv_wr;
 			     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
 				if (!ctx->used != MSK_CTX_PENDING)
 					break;
 
-			if (i == trans->rq_depth) {
+			if (i == trans->qp_attr.cap.max_recv_wr) {
 				INFO_LOG(internals->debug & MSK_DEBUG_RECV, "Waiting for cond");
 				pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 			}
 
-		} while ( i == trans->rq_depth );
+		} while ( i == trans->qp_attr.cap.max_recv_wr );
 		ctx->used = MSK_CTX_PROCESSING;
 		pthread_mutex_unlock(&trans->ctx_lock);
 
@@ -239,11 +239,11 @@ void msk_tcp_destroy_trans(msk_trans_t **ptrans) {
 }
 
 int msk_tcp_setup_buffers(msk_trans_t *trans) {
-	trans->recv_buf = malloc(trans->rq_depth * sizeof(struct msk_ctx));
+	trans->recv_buf = malloc(trans->qp_attr.cap.max_recv_wr * sizeof(struct msk_ctx));
 	if (trans->recv_buf == NULL)
 		return ENOMEM;
 
-	memset(trans->recv_buf, 0, trans->rq_depth * sizeof(struct msk_ctx));
+	memset(trans->recv_buf, 0, trans->qp_attr.cap.max_recv_wr * sizeof(struct msk_ctx));
 
 	return 0;
 }
@@ -280,19 +280,23 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 
 		trans->state = MSK_INIT;
 
-		if (!attr->addr.sa_stor.ss_family) { //FIXME: do a proper check?
-			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "address has to be defined");
-			ret = EDESTADDRREQ;
+		trans->node = strdup(attr->node);
+		if (!trans->node) {
+			ret = ENOMEM;
 			break;
 		}
-		trans->addr.sa_stor = attr->addr.sa_stor;
+		trans->port = strdup(attr->port);
+		if (!trans->port) {
+			ret = ENOMEM;
+			break;
+		}
 
 		trans->server = attr->server;
 		trans->timeout = attr->timeout   ? attr->timeout  : 3000000; // in ms
-		trans->sq_depth = attr->sq_depth ? attr->sq_depth : 50;
-		trans->max_send_sge = attr->max_send_sge ? attr->max_send_sge : 1;
-		trans->rq_depth = attr->rq_depth ? attr->rq_depth : 50;
-		trans->max_recv_sge = attr->max_recv_sge ? attr->max_recv_sge : 1;
+		trans->qp_attr.cap.max_send_wr = attr->sq_depth ? attr->sq_depth : 50;
+		trans->qp_attr.cap.max_send_sge = attr->max_send_sge ? attr->max_send_sge : 1;
+		trans->qp_attr.cap.max_recv_wr = attr->rq_depth ? attr->rq_depth : 50;
+		trans->qp_attr.cap.max_recv_sge = attr->max_recv_sge ? attr->max_recv_sge : 1;
 		trans->disconnect_callback = attr->disconnect_callback;
 
 		ret = pthread_mutex_init(&trans->cm_lock, NULL);
@@ -337,6 +341,7 @@ int msk_tcp_init(msk_trans_t **ptrans, msk_trans_attr_t *attr) {
 // server specific:
 int msk_tcp_bind_server(msk_trans_t *trans) {
 	int rc;
+	struct addrinfo *res;
 
 	do {
 		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -346,12 +351,20 @@ int msk_tcp_bind_server(msk_trans_t *trans) {
 			break;
 		}
 
-		rc = bind(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
+		rc = getaddrinfo(trans->node, trans->port, NULL, &res);
+		if (rc) {
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "getaddrinfo failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+
+		rc = bind(tcpt(trans)->sockfd, res->ai_addr, INET_ADDRSTRLEN);
 		if (rc) {
 			rc = errno;
 			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "bind failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
+
+		freeaddrinfo(res);
 
 		rc = listen(tcpt(trans)->sockfd, trans->server);
 		if (rc) {
@@ -459,12 +472,15 @@ int msk_tcp_finalize_accept(msk_trans_t *trans) {
 
 int msk_tcp_connect(msk_trans_t *trans) {
 	int rc;
+	struct addrinfo *res;
+
 	do {
 		rc = msk_tcp_setup_buffers(trans);
 		if (rc) {
 			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Couldn't setup buffers");
 			break;
 		}
+
 		tcpt(trans)->sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 		if (tcpt(trans)->sockfd == -1) {
 			rc = errno;
@@ -472,12 +488,20 @@ int msk_tcp_connect(msk_trans_t *trans) {
 			break;
 		}
 
-		rc = connect(tcpt(trans)->sockfd, &trans->addr.sa, INET_ADDRSTRLEN);
+		rc = getaddrinfo(trans->node, trans->port, NULL, &res);
+		if (rc) {
+			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "getaddrinfo failed: %s (%d)", strerror(rc), rc);
+			break;
+		}
+
+		rc = connect(tcpt(trans)->sockfd, res->ai_addr, INET_ADDRSTRLEN);
 		if (rc) {
 			rc = errno;
 			INFO_LOG(internals->debug & MSK_DEBUG_EVENT, "Connect failed: %s (%d)", strerror(rc), rc);
 			break;
 		}
+
+		freeaddrinfo(res);
 	} while (0);
 
 	if (!rc)
@@ -519,17 +543,17 @@ int msk_tcp_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_c
 	pthread_mutex_lock(&trans->ctx_lock);
 	do {
 		for (i = 0, ctx = trans->recv_buf;
-		     i < trans->rq_depth;
+		     i < trans->qp_attr.cap.max_recv_wr;
 		     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
 			if (!ctx->used != MSK_CTX_FREE)
 				break;
 
-		if (i == trans->rq_depth) {
+		if (i == trans->qp_attr.cap.max_recv_wr) {
 			INFO_LOG(internals->debug & MSK_DEBUG_RECV, "Waiting for cond");
 			pthread_cond_wait(&trans->ctx_cond, &trans->ctx_lock);
 		}
 
-	} while ( i == trans->rq_depth );
+	} while ( i == trans->qp_attr.cap.max_recv_wr );
 	ctx->data = data;
 	ctx->num_sge = num_sge;
 	ctx->callback = callback;
@@ -587,8 +611,7 @@ void msk_tcp_print_devinfo(msk_trans_t *trans) {
 }
 
 struct sockaddr *msk_tcp_get_dst_addr(msk_trans_t *trans) {
-	//FIXME getpeername
-	return NULL;
+	return &tcpt(trans)->peer_sa.sa;
 }
 struct sockaddr *msk_tcp_get_src_addr(msk_trans_t *trans) {
 	//FIXME getsockname
