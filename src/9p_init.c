@@ -253,10 +253,10 @@ int parser(char *conf_file, struct p9_conf *p9_conf) {
 	// Default port. depends on the sin family
 	if (port == NULL) {
 		if (p9_conf->net_ops == &p9_tcp_ops)
-			p9_conf->trans_attr.port = DEFAULT_PORT_TCP;
+			p9_conf->trans_attr.port = strdup(DEFAULT_PORT_TCP);
 #if HAVE_MOOSHIKA
 		else if(p9_conf->net_ops == &p9_rdma_ops)
-			p9_conf->trans_attr.port = DEFAULT_PORT_RDMA;
+			p9_conf->trans_attr.port = strdup(DEFAULT_PORT_RDMA);
 #endif
 		else
 			ERROR_LOG("ops neither tcp nor rdma?");

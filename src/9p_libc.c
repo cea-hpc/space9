@@ -234,11 +234,11 @@ int p9l_mkdir(struct p9_fid *fid, char *path, uint32_t mode) {
 	if (dirname[0] != '\0') {
 		rc = p9l_walk((relative ? fid : p9_handle->root_fid), dirname, &dfid, 0);
 		if (!rc) {
-			rc = p9p_mkdir(p9_handle, dfid, basename, (mode ? mode : 0666) & ~p9_handle->umask, 0, NULL);
+			rc = p9p_mkdir(p9_handle, dfid, basename, (mode ? mode : 0777) & ~p9_handle->umask, 0, NULL);
 			p9l_clunk(&dfid);
 		}
 	} else {
-		rc = p9p_mkdir(p9_handle, (relative ? fid : p9_handle->root_fid), basename, (mode ? mode : 0666) & ~p9_handle->umask, 0, NULL);
+		rc = p9p_mkdir(p9_handle, (relative ? fid : p9_handle->root_fid), basename, (mode ? mode : 0777) & ~p9_handle->umask, 0, NULL);
 	}
 
 	free(canon_path);
