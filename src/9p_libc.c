@@ -1272,7 +1272,7 @@ static int rd_cb(void *arg, struct p9_handle *p9_handle, struct p9_fid *dfid, st
 ssize_t p9l_rmrf(struct p9_fid *cwd, char *path) {
 	struct p9_handle *p9_handle;
 	struct p9_fid *fid;
-	int rc;
+	int rc = 0;
 	uint64_t offset;
 	bucket_t *buck;
 	struct cb_arg cb_arg;
