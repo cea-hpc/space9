@@ -259,7 +259,7 @@ mode is file mode if created, umask is applied") open;
 		attr.valid = P9_GETATTR_BASIC;
 		errno = p9l_stat($self->cwd, path, &attr, 0);
 		if (!errno) {
-			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+			ret = Py_BuildValue("{sHsKsKsHsHsKsKsKsKsKsKsK}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
 				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
 				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
@@ -275,7 +275,7 @@ mode is file mode if created, umask is applied") open;
 		attr.valid = P9_GETATTR_BASIC;
 		errno = p9l_stat($self->cwd, path, &attr, AT_SYMLINK_NOFOLLOW);
 		if (!errno) {
-			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+			ret = Py_BuildValue("{sHsKsKsHsHsKsKsKsKsKsKsK}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
 				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
 				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
@@ -289,7 +289,7 @@ mode is file mode if created, umask is applied") open;
 		attr.valid = P9_GETATTR_BASIC;
 		errno = p9l_fstat(fid, &attr);
 		if (!errno) {
-			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+			ret = Py_BuildValue("{sHsKsKsHsHsKsKsKsKsKsKsK}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
 				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
 				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
@@ -302,7 +302,7 @@ mode is file mode if created, umask is applied") open;
 		PyObject *ret = NULL;
 		errno = p9p_statfs($self, $self->cwd, &stat);
 		if (!errno) {
-			ret = Py_BuildValue("{sisisisisisisisisi}",
+			ret = Py_BuildValue("{sHsHsKsKsKsKsKsKsH}",
 				"type", stat.type, "bsize", stat.bsize, "blocks", stat.blocks,
 				"bfree", stat.bfree, "bavail", stat.bavail, "files", stat.files,
 				"ffree", stat.ffree, "fsid", stat.fsid, "namelen", stat.namelen);
@@ -473,7 +473,7 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		attr.valid = P9_GETATTR_BASIC;
 		errno = p9l_fstat($self->ptr, &attr);
 		if (!errno) {
-			ret = Py_BuildValue("{sisisisisisisisisisisisi}",
+			ret = Py_BuildValue("{sHsKsKsHsHsKsKsKsKsKsKsK}",
 				"mode", attr.mode, "ino", attr.ino, "nlink", attr.nlink, "uid", attr.uid,
 				"gid", attr.gid, "size", attr.size, "blksize", attr.blksize,
 				"blocks", attr.blkcount, "atime", attr.atime_sec, "mtime", attr.mtime_sec,
