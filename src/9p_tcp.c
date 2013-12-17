@@ -160,7 +160,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 	char *junk;
 	int rc, i;
 	msk_data_t *data;
-	msk_ctx_t *ctx;
+	struct msk_ctx *ctx;
 	uint32_t n, packet_size, read_size;
 
 	while (trans->state == MSK_CONNECTED) {
@@ -168,7 +168,7 @@ static void *msk_tcp_recv_thread(void *arg) {
 		do {
 			for (i = 0, ctx = trans->recv_buf;
 			     i < trans->qp_attr.cap.max_recv_wr;
-			     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
+			     i++, ctx = (struct msk_ctx*)((uint8_t*)ctx + sizeof(struct msk_ctx)))
 				if (!ctx->used != MSK_CTX_PENDING)
 					break;
 
@@ -544,7 +544,7 @@ int msk_tcp_post_n_recv(msk_trans_t *trans, msk_data_t *data, int num_sge, ctx_c
 	do {
 		for (i = 0, ctx = trans->recv_buf;
 		     i < trans->qp_attr.cap.max_recv_wr;
-		     i++, ctx = (msk_ctx_t*)((uint8_t*)ctx + sizeof(msk_ctx_t)))
+		     i++, ctx = (struct msk_ctx*)((uint8_t*)ctx + sizeof(struct msk_ctx)))
 			if (!ctx->used != MSK_CTX_FREE)
 				break;
 
