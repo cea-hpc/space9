@@ -117,7 +117,7 @@ int p9l_walk(struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags) {
 	return rc;
 }
 static inline int p9l_rootwalk(struct p9_handle *p9_handle, char *path, struct p9_fid **pfid, int flags) {
-	return p9l_walk((path[0] != '/' ? p9_handle->cwd : p9_handle->root_fid), path, pfid, flags);
+	return p9l_walk(p9_handle->cwd, path, pfid, flags);
 }
 
 struct p9_fid *p9l_getcwd(struct p9_handle *p9_handle) {
@@ -138,7 +138,6 @@ int p9l_clunk(struct p9_fid **pfid) {
 }
 
 int p9l_cd(struct p9_handle *p9_handle, char *path) {
-	char *canon_path;
 	struct p9_fid *fid;
 	int rc;
 
@@ -146,13 +145,7 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 	if (p9_handle == NULL || path == NULL)
 		return EINVAL;
 
-	canon_path = malloc(strlen(path)+1);
-	if (!canon_path)
-		return ENOMEM;
-
-	strcpy(canon_path, path);
-	path_canonicalizer(canon_path);
-	rc = p9l_rootwalk(p9_handle, canon_path, &fid, 0);
+	rc = p9l_rootwalk(p9_handle, path, &fid, 0);
 	if (!rc) {
 		if (fid->qid.type != P9_QTDIR) {
 			rc = ENOTDIR;
@@ -163,7 +156,6 @@ int p9l_cd(struct p9_handle *p9_handle, char *path) {
 		}
 	}
 
-	free(canon_path);
 	return rc;
 }
 
@@ -234,7 +226,7 @@ int p9l_mkdir(struct p9_fid *fid, char *path, uint32_t mode) {
 	relative = path_split(canon_path, &dirname, &basename);
 
 	if (dirname[0] != '\0') {
-		rc = p9l_walk((relative ? fid : p9_handle->root_fid), dirname, &dfid, 0);
+		rc = p9l_walk(fid, dirname, &dfid, 0);
 		if (!rc) {
 			rc = p9p_mkdir(p9_handle, dfid, basename, (mode ? mode : 0777) & ~p9_handle->umask, 0, NULL);
 			p9l_clunk(&dfid);
@@ -642,11 +634,14 @@ int p9l_chmod(struct p9_fid *cwd, char *path, uint32_t mode) {
 }
 
 /* flags = 0 or AT_SYMLINK_NOFOLLOW */
-int p9l_stat(struct p9_fid *dfid, char *path, struct p9_getattr *attr, int flags) {
+int p9l_stat(struct p9_fid *cwd, char *path, struct p9_getattr *attr, int flags) {
 	int rc;
 	struct p9_fid *fid;
 
-	rc = p9l_walk(dfid, path, &fid, flags);
+	if (!cwd || !path)
+		return EINVAL;
+
+	rc = p9l_walk(cwd, path, &fid, 0);
 	if (!rc) {
 		rc = p9l_fstat(fid, attr);
 		p9l_clunk(&fid);
@@ -979,19 +974,14 @@ ssize_t p9l_xattrget(struct p9_fid *cwd, char *path, char *field, char *buf, siz
 	ssize_t rc;
 	struct p9_fid *fid = NULL;
 
-	/* Sanity check */
-	if (cwd == NULL || path == NULL)
+	if (!cwd || !path)
 		return -EINVAL;
 
-	do {
-		rc = p9l_walk(cwd, path, &fid, 0);
-		if (rc)
-			break;
-
+	rc = p9l_walk(cwd, path, &fid, 0);
+	if (!rc) {
 		rc = p9l_fxattrget(fid, field, buf, count);
-	} while (0);
-
-	p9p_clunk(fid->p9_handle, &fid);
+		p9l_clunk(&fid);
+	}
 
 	return rc;
 }
@@ -1002,19 +992,14 @@ ssize_t p9l_xattrset(struct p9_fid *cwd, char *path, char *field, char *buf, siz
 	ssize_t rc;
 	struct p9_fid *fid = NULL;
 
-	/* Sanity check */
-	if (cwd == NULL || path == NULL)
+	if (!cwd || !path)
 		return -EINVAL;
 
-	do {
-		rc = p9l_walk(cwd, path, &fid, 0);
-		if (rc)
-			break;
-
+	rc = p9l_walk(cwd, path, &fid, 0);
+	if (!rc) {
 		rc = p9l_fxattrset(fid, field, buf, count, flags);
-	} while (0);
-
-	p9p_clunk(fid->p9_handle, &fid);
+		p9l_clunk(&fid);
+	}
 
 	return rc;
 }
