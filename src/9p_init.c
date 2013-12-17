@@ -340,6 +340,7 @@ int p9_init(struct p9_handle **pp9_handle, char *conf_file) {
 
 	do {
 		strcpy(p9_handle->aname, p9_conf.aname);
+		p9_handle->aname_len = strlen(p9_handle->aname);
 
 		p9_handle->debug = p9_conf.debug;
 		p9_handle->pipeline = p9_conf.pipeline;

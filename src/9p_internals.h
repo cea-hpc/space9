@@ -179,6 +179,7 @@ struct p9_net_ops {
 
 struct p9_handle {
 	uint16_t max_tag;
+	uint16_t aname_len;
 	char aname[MAXPATHLEN];
 	char hostname[MAX_CANON+1];
 	uint8_t *rdmabuf;
@@ -197,10 +198,10 @@ struct p9_handle {
 	pthread_mutex_t credit_lock;
 	pthread_cond_t credit_cond;
 	uint32_t credits;
+	uint32_t max_fid;
 	bitmap_t *wdata_bitmap;
 	bitmap_t *tags_bitmap;
 	struct p9_tag *tags;
-	uint32_t max_fid;
 	bitmap_t *fids_bitmap;
 	bucket_t *fids_bucket;
 	struct p9_fid **fids;

@@ -83,7 +83,9 @@ int p9l_walk(struct p9_fid *dfid, char *path, struct p9_fid **pfid, int flags) {
 			}
 			path = readlink;
 		}
-		rc = p9p_walk(p9_handle, dfid, path, &fid);
+		if (!strncmp(path, p9_handle->aname, p9_handle->aname_len))
+			path += p9_handle->aname_len;
+		rc = p9p_walk(p9_handle, (path[0] != '/' ? dfid : p9_handle->root_fid), path, &fid);
 		if (rc)
 			break;
 
