@@ -445,8 +445,9 @@ flags can be O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_TRUNC, O_APPEND") fid;
 		errno = p9p_clunk($self->ptr->p9_handle, &$self->ptr);
 
 		/* it's possible clunk failed before sending the message, if so don't decref */
-		if ($self->ptr == NULL)
+		if ($self->ptr == NULL) {
 			Py_DECREF($self->handle_obj);
+		}
 	}
 %feature("docstring", "unlink - does NOT close") unlink;
 	void unlink() {
