@@ -128,9 +128,9 @@ static void *readwritethr(void* arg) {
 		if (tmprc) {
 			printf("clunk failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
 		}
-		tmprc = p9p_unlinkat(p9_handle, p9l_getcwd(p9_handle), filename, 0);
+		tmprc = p9l_rm(p9l_getcwd(p9_handle), filename);
 		if (tmprc) {
-			printf("unlinkat failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
+			printf("rm failed, rc: %s (%d)\n", strerror(tmprc), tmprc);
 		}
 	}
 
